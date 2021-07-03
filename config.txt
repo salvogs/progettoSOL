@@ -1,0 +1,23 @@
+# capacità massima in bytes del server
+MAXCAPACITY:300000000
+
+# numero di file massimo del server
+MAXFILENUM:2
+
+# numero di thread worker
+WORKERNUM:10
+
+# path del socket
+SOCKETPATH:fsSocket.sk
+
+# path del log file
+LOGPATH:log.txt
+
+# maximum number of pending connections to the socket
+SOCKETBACKLOG:10
+
+# size of the master-worker task buffer
+TASKBUFSIZE:2048
+
+# size of the log buffer
+LOGBUFFERSIZE:2048

@@ -3,13 +3,6 @@
 
 #include "../include/queue.h"
 
-// Macro controllo errori
-#define ec(s, r, m, e) \
-    if ((s) == (r))    \
-    {                  \
-        perror(m);     \
-        e;           \
-    }
 
 #define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
 
@@ -17,10 +10,19 @@
 	if(p_flag == 1) \
 		fprintf("scrivooo");
 
-typedef struct opType{
+typedef struct{
 	char opt;
 	char* arg;
-}opType;
+}optT;
+
+typedef struct{
+	queue* argList;
+	int PRINT_ENABLE;
+	long REQ_TIME;
+	char* SOCKNAME;
+	
+}parseT;
+
 
 
 
@@ -34,7 +36,7 @@ typedef struct opType{
 
 
 
-queue* parser(int argc, char* argv[]);
+parseT* parser(int argc, char* argv[]);
 int enqueueArg(queue* argQueue, char opt,char* arg);
 
 
