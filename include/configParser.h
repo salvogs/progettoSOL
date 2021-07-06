@@ -1,5 +1,5 @@
-#ifndef FSYSTEM_H
-#define FSYSTEM_H
+#ifndef CONFIG_PARSER_H
+#define CONFIG_PARSER_H
 
 #define MAXCAPACITY_ERR "MAXCAPACITY: deve essere un intero > 0\n"
 
@@ -61,9 +61,6 @@
 	}
 
 		
-		
-
-
 
 //struct che mantiene lo stato del server e i vincoli da rispettare
 
@@ -79,5 +76,8 @@ typedef struct fs{
 
 
 
+void remplaceNewline(char* s, int len);
+fsT* parseConfig(char* configPath,char* delim);
+void destroyConfiguration(fsT* fsConfig);
 
 #endif

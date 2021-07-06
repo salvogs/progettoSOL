@@ -2,12 +2,22 @@
 #define UTILS_H
 
 #include <sys/types.h>
+#include <errno.h>
 
 // Macro controllo errori
 #define ec(s, r, m, e) \
     if ((s) == (r))    \
-    {                  \
-        perror(m);     \
+    {   \
+        if(errno)               \
+            perror(m);     \
+        e;           \
+    }
+
+#define ec_n(s, r, m, e) \
+    if ((s) != (r))    \
+    {   \
+        if(errno)               \
+            perror(m);     \
         e;           \
     }
 

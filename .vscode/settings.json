@@ -2,6 +2,8 @@
 	"files.associations": {
 		"stdlib.h": "c",
 		"queue.h": "c",
-		"fsystem.h": "c"
+		"fsystem.h": "c",
+		"cerrno": "cpp",
+		"configparser.h": "c"
 	}
 }

@@ -1,4 +1,5 @@
 //#define _POSIX_C_SOURCE 200809L
+// #define _GNU_SOURCE
 #include <stdio.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -8,10 +9,6 @@
 #include "../include/clientParser.h"
 #include "../include/utils.h"
 
-
-// }
-//-f -h -p solo 1 volta
-//realpath converte path relativo in assoluto
 
 
 

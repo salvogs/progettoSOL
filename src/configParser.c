@@ -1,29 +1,83 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include "../include/fsystem.h"
+#include "../include/configParser.h"
 #include "../include/utils.h"
+#include "../include/server.h"
 // #include <limits.h>
 // #include <stdlib.h>
 
 #define BUFSIZE 256
 
-void remplaceNewline(char* token, int len){
+
+// per contare le occorrenze dei parametri
+int mc = 0;
+int mfn = 0;
+int wn = 0;
+int sp = 0;
+int lp = 0;
+
+void remplaceNewline(char* s, int len){
 	for(int i = 0; i < len; i++){
-		if(iscntrl(token[i])){
-			token[i] = '\0';
+		if(s[i] == '\n' || s[i] == '\r'){
+			s[i] = '\0';
 			break;
 		}
 	}
 	return;
 }
 
+fsT* checkParsing(fsT* fsConfig){
+	
+	if(!mc){
+		errno = EINVAL;
+		perror("MAXCAPACITY");
+	}
+
+	if(!mfn){
+		errno = EINVAL;
+		perror("MAXFILENUM");
+	}
+
+	if(!wn){
+		errno = EINVAL;
+		perror("WORKERNUM");
+	}
+
+	if(!sp){
+		errno = EINVAL;
+		perror("SOCKETPATH");
+	}
+	
+	if(!lp){
+		errno = EINVAL;
+		perror("LOGPATH");
+	}
+
+	if(errno){
+		destroyConfiguration(fsConfig);
+		return NULL;
+	}
+	
+	return fsConfig;
+
+}
+
+
 fsT* parseConfig(char* configPath,char* delim){
 
-	FILE* fPtr = fopen(configPath,"r");
-	ec(configPath,NULL,"config file",return NULL)
-	
+	char* path = realpath(configPath,NULL);
+	ec(path,NULL,"config path",return NULL)
+
+
+	FILE* fPtr = fopen(path,"r");
+	if(!fPtr)
+		return NULL;
+	free(path);
+
 	char buf[256];
 	char* token;
 
@@ -38,24 +92,32 @@ fsT* parseConfig(char* configPath,char* delim){
 
 
 	while(fgets(buf,BUFSIZE,fPtr) != NULL){
-		if(buf[0] == '#' || iscntrl(buf[0]))
+		if(buf[0] == '#' || buf[0] == '\n' || buf[0] == '\r')
 			continue;
 
 		char* save = NULL;
 		//printf("%s",buf);
 		token = strtok_r(buf,delim,&save);
-		
+		if(!token){
+			fprintf(stderr,"strtok_r failed\n");
+			return NULL;
+		}
 		
 		if(strncmp(token,"MAXCAPACITY",strlen(token)) == 0){
 			GET_INTEGER_PARAMETER(fsConfig->maxCapacity,1,MAXCAPACITY_ERR)
+			mc++;
 		}else if(strncmp(token,"MAXFILENUM",strlen(token)) == 0){
 			GET_INTEGER_PARAMETER(fsConfig->maxFileNum,1,MAXFILENUM_ERR)
+			mfn++;
 		}else if(strncmp(token,"WORKERNUM",strlen(token)) == 0){
 			GET_INTEGER_PARAMETER(fsConfig->workerNum,1,WORKERNUM_ERR)
+			wn++;
 		}else if(strncmp(token,"SOCKETPATH",strlen(token)) == 0){
 			GET_STRING_PARAMETER(fsConfig->SOCKNAME,".sk",SOCKNAME_ERR)
+			sp++;
 		}else if(strncmp(token,"LOGPATH",strlen(token)) == 0){
 			GET_STRING_PARAMETER(fsConfig->logPath,".txt",LOGPATH_ERR)
+			lp++;
 		}
 
 
@@ -63,23 +125,22 @@ fsT* parseConfig(char* configPath,char* delim){
 	}
 
 	fclose(fPtr);
+
+	if(!checkParsing(fsConfig))
+		return NULL;
+	
+
 	return fsConfig;
+
+	
+
 }
 
 void destroyConfiguration(fsT* fsConfig){
-	free(fsConfig->SOCKNAME);
-	free(fsConfig->logPath);
-
-	free(fsConfig);
-}
-
-int main(int argc,char* argv[]){
-	fsT* fsConfig = parseConfig("../config.txt",":");
+	if(fsConfig->SOCKNAME)
+		free(fsConfig->SOCKNAME);
+	if(fsConfig->logPath)
+		free(fsConfig->logPath);
 	if(fsConfig)
-		printf("MAXCAPACITY: %ld, MAXFILENUM: %ld"
-		 "WORKERNUM %ld, SOCKNAME %s, LOGPATH %s\n"\
-		 ,fsConfig->maxCapacity,fsConfig->maxFileNum,fsConfig->workerNum,fsConfig->SOCKNAME,fsConfig->logPath);
-
-	destroyConfiguration(fsConfig);
-	return 0;
+		free(fsConfig);
 }

@@ -2,7 +2,7 @@
 #ifndef API_H
 #define API_H
 
-#define _POSIX_C_SOURCE 200809L
+//#define _POSIX_C_SOURCE 200809L
 #include <time.h>
 /*
 Viene aperta una connessione AF_UNIX al socket file sockname. Se il server non accetta immediatamente la
