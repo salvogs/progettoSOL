@@ -31,10 +31,9 @@ int main(int argc, char* argv[]){
 	parseT* parseResult = parser(argc,argv);
 
 	if(!parseResult){
-		if(errno){
+		if(errno)
 			perror("command parsing");
-		}
-		destroyClientParsing(parseResult);
+
 		return 1;
 	}
 	if(parseResult->PRINT_ENABLE == 1)

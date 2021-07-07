@@ -104,6 +104,7 @@ parseT* parser(int argc, char* argv[]){
 					if(optarg){
 						if(isNumber(optarg,&parseResult->REQ_TIME) != 0){ // no numero/overflow
 							fprintf(stderr,"-t deve essere seguito da un intero\n");
+							destroyClientParsing(parseResult);
 							return NULL;
 						}
 					}
@@ -114,11 +115,13 @@ parseT* parser(int argc, char* argv[]){
 
 			case ':':
 				fprintf(stderr,"l'opzione '-%c' richiede un argomento\n", optopt);
+				destroyClientParsing(parseResult);
 				return NULL;
 			break;
 
 			case '?':// restituito se getopt trova una opzione non riconosciuta
       			fprintf(stderr,"l'opzione '-%c' non e' gestita\n", optopt);
+				destroyClientParsing(parseResult);
 				return NULL;
     		break;
 			default:
@@ -132,11 +135,14 @@ parseT* parser(int argc, char* argv[]){
 		}
 	}	
 
-	if(!parseResult->SOCKNAME){
+	if(!(parseResult->SOCKNAME)){
 		fprintf(stderr,"l'opzione -f e' obbligatoria\n");
+		destroyClientParsing(parseResult);
 		return NULL;
 	}
-	//destroyQueue(argQueue);
+
+
+	
 	return parseResult;
 }
 
