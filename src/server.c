@@ -14,6 +14,8 @@
 #include "../include/configParser.h"
 #include "../include/server.h"
 #include "../include/queue.h"
+#include "../include/icl_hash.h"
+
 
 #define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
 	printf("errore creazione thread\n"); \
@@ -34,12 +36,28 @@
 
 
 fsT* fsConfig = NULL;
+
 pthread_mutex_t request_mux = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 
+// coda in cui inserire i fd dei client che fanno richieste
+queue* requestQueue;
 
-int masterFun(queue* requestQueue){
+// pipe che servirà ai thread worker per comunicare al master i fd_client da riascoltare
+int pfd[2];
+
+
+
+
+
+int masterFun(){
+
+	// creazione hash table che ospitera' il file system
+	icl_hash_t* ht = icl_hash_create(fsConfig->maxFileNum,hash_pjw,string_compare);
+	ec(ht,NULL,"creazione hash table",return 1);
+	
+
 	
 	int fd_skt, fd_num = 0,fd;
 	// creazione endpoint
@@ -67,11 +85,15 @@ int masterFun(queue* requestQueue){
 
 	long fd_client;
 	
+
 	// char buf[BUFSIZE];
 
+	
 
+	FD_SET(pfd[0],&set);
 	
 	
+
 	while(1){
 		//usiamo la select per evitare che le read e le accept si blocchino
 		
@@ -88,6 +110,7 @@ int masterFun(queue* requestQueue){
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
 					fprintf(stdout,"client connesso %ld\n",fd_client);
+
 					//nella mascheraa set metto a 1 il bit della fd_client(ora è attivo)
 					FD_SET(fd_client,&set);
 					//tengo sempre aggiornato il descrittore con indice massimo
@@ -111,17 +134,17 @@ int masterFun(queue* requestQueue){
 	}
 }
 
-void* workerFun(void* q){
+void* workerFun(){
 	int end = 0;
 	while(!end){
 		LOCK(&request_mux);
 		printf("sono il thread %ld\n", pthread_self());
-		while(isQueueEmpty(q))
+		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
-		printQueueInt(q);
+		printQueueInt(requestQueue);
 
-		int fd = (long)dequeue(q);
-		if(!isQueueEmpty(q))
+		int fd = (long)dequeue(requestQueue);
+		if(!isQueueEmpty(requestQueue))
 			SIGNAL(&cond)
 		UNLOCK(&request_mux);
 
@@ -138,12 +161,12 @@ void* workerFun(void* q){
 	return NULL;
 }
 
-pthread_t* spawnThread(int n,queue* q){
+pthread_t* spawnThread(int n){
 	pthread_t* tid = malloc(sizeof(pthread_t)*n);
 	ec(tid,NULL,"malloc",return NULL)
 
 	for(int i = 0; i < n; i++){
-		CREA_THREAD(&tid[i],NULL,workerFun,(void*)q)
+		CREA_THREAD(&tid[i],NULL,workerFun,NULL)
 	}
 
 	return tid;
@@ -175,24 +198,26 @@ int main(int argc, char* argv[]){
 		 ,fsConfig->maxCapacity,fsConfig->maxFileNum,fsConfig->workerNum,fsConfig->SOCKNAME,fsConfig->logPath);
 
 	
-	// creo coda in cui inserire i fd dei client che fanno richieste
 
-	queue* requestQueue = createQueue(free,NULL);
-	ec(requestQueue,NULL,"creazione coda",return 1);
+	ec(requestQueue = createQueue(free,NULL),NULL,"creazione coda",return 1);
 	
+	ec(pipe(pfd),-1,"creazione pipe",return 1)
+	
+
+
 
 	// devo spawnare i thread worker sempre in attesa di servire client
 
 
 	pthread_t *tid; //array dove mantenere tid dei worker
-	tid = spawnThread(fsConfig->workerNum,requestQueue);
+	tid = spawnThread(fsConfig->workerNum);
 	
 	/*
 		accetto richieste da parte dei client
 		e le faccio servire dai thread worker
 	*/
 	
-	return masterFun(requestQueue);
+	return masterFun();
 
 	// return 0;
 }
