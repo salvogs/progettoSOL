@@ -2,7 +2,12 @@
 #include <errno.h>
 #include "../include/clientParser.h"
 #include "../include/queue.h"
-//#include "../include/api.h"
+#include "../include/api.h"
+#include "../include/utils.h"
+
+#define OC_RETRY_TIME 1000 //ms
+#define OC_ABS_TIME 10 //s
+
 
 void printParseResult(parseT* parseResult){
 
@@ -26,20 +31,31 @@ int main(int argc, char* argv[]){
 	parseT* parseResult = parser(argc,argv);
 
 	if(!parseResult){
-		puts("qui");
 		if(errno){
 			perror("command parsing");
 		}
+		destroyClientParsing(parseResult);
 		return 1;
 	}
+	if(parseResult->PRINT_ENABLE == 1)
+		PRINTS = 1;
 
 	printParseResult(parseResult);
 
 	//come prima cosa bisogna connettersi al server
-	//ec(openConnection(parseResult->SOCKNAME,10,)
-
-
 	
+
+	struct timespec abstime = {0,time(NULL)+OC_ABS_TIME};
+
+	if(openConnection(parseResult->SOCKNAME,OC_RETRY_TIME,abstime) == -1){
+		if(errno == ENOENT)
+			fprintf(stderr,"open connection: Socket non trovato\n");
+		else
+			perror("open connection");
+
+		destroyClientParsing(parseResult);
+		return 1;
+	}
 
 	
 	return 0;

@@ -9,7 +9,13 @@
 #include "../include/clientParser.h"
 #include "../include/utils.h"
 
+void destroyClientParsing(parseT* parseResult){
+	destroyQueue(parseResult->argList);
+	if(parseResult->SOCKNAME)
+		free(parseResult->SOCKNAME);
 
+	free(parseResult);
+}
 
 
 int enqueueArg(queue* argQueue, char opt,char* arg){
@@ -126,8 +132,10 @@ parseT* parser(int argc, char* argv[]){
 		}
 	}	
 
-	if(!parseResult->SOCKNAME)
+	if(!parseResult->SOCKNAME){
+		fprintf(stderr,"l'opzione -f e' obbligatoria\n");
 		return NULL;
+	}
 	//destroyQueue(argQueue);
 	return parseResult;
 }

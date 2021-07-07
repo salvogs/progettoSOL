@@ -9,7 +9,7 @@ LIBS = -lpthread
 
 SERVERDEPLIST = $(SRCDIR)/server.c $(SRCDIR)/configParser.c $(SRCDIR)/queue.c $(SRCDIR)/utils.c
 
-CLIENTDEPLIST = $(SRCDIR)/client.c $(SRCDIR)/clientParser.c $(SRCDIR)/queue.c $(SRCDIR)/utils.c
+CLIENTDEPLIST = $(SRCDIR)/client.c $(SRCDIR)/clientParser.c $(SRCDIR)/api.c $(SRCDIR)/queue.c $(SRCDIR)/utils.c
 
 
 .PHONY: all clean

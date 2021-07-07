@@ -4,6 +4,11 @@
 		"queue.h": "c",
 		"fsystem.h": "c",
 		"cerrno": "cpp",
-		"configparser.h": "c"
+		"configparser.h": "c",
+		"api.h": "c",
+		"time.h": "c",
+		"types.h": "c",
+		"utils.h": "c",
+		"un.h": "c"
 	}
 }

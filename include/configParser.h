@@ -11,6 +11,8 @@
 
 #define LOGPATH_ERR "LOGPATH: deve essere un path terminato con .txt\n"
 
+
+#include "../include/server.h"
 /*
 	converte, se il campo 'p' non e' gia' stato settato,
 	il parametro di configurazione in intero e controlla 
@@ -62,16 +64,6 @@
 
 		
 
-//struct che mantiene lo stato del server e i vincoli da rispettare
-
-typedef struct fs{
-	long maxCapacity;
-	long maxFileNum;
-	long workerNum;
-
-	char* SOCKNAME;
-	char* logPath;
-}fsT;
 
 
 

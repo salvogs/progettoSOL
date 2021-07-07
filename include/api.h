@@ -1,9 +1,22 @@
-
 #ifndef API_H
 #define API_H
 
-//#define _POSIX_C_SOURCE 200809L
+// #define _DEFAULT_SOURCE
+
 #include <time.h>
+#include <sys/types.h>     
+#include <sys/socket.h>
+#include <sys/un.h>/* struttura che rappresenta un indirizzo */
+#include <errno.h>
+#include <unistd.h>
+
+
+#define UNIX_PATH_MAX 108
+
+
+int FD_CLIENT;
+int PRINTS; //se 1 le stampe per ogni operazione sono abilitate
+
 /*
 Viene aperta una connessione AF_UNIX al socket file sockname. Se il server non accetta immediatamente la
 richiesta di connessione, la connessione da parte del client viene ripetuta dopo ‘msec’ millisecondi e fino allo

@@ -19,7 +19,7 @@ typedef struct _queue{
 }queue;
 
 
-//controlla se la coda è vuota, ritorna 1 se vuota 0 altrimenti
+//ritorna 1 se la coda e' vuota 0 altrimenti
 int isQueueEmpty(queue* q);
 
 queue* createQueue(void (*freeFun)(void *), int (*compare)(void*,void*));
