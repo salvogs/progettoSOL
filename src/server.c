@@ -18,7 +18,7 @@
 
 
 #define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
-	printf("errore creazione thread\n"); \
+	fprintf(stderr,"errore creazione thread\n"); \
 	exit(EXIT_FAILURE);}
 
 
@@ -33,7 +33,7 @@
 
 #define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
 #define BUFSIZE 2048
-
+#define BUFPIPESIZE 4
 
 fsT* fsConfig = NULL;
 
@@ -83,7 +83,7 @@ int masterFun(){
 	FD_ZERO(&set);
 	FD_SET(fd_skt,&set);
 
-	long fd_client;
+	int fd_client;
 	
 
 	// char buf[BUFSIZE];
@@ -92,7 +92,7 @@ int masterFun(){
 
 	FD_SET(pfd[0],&set);
 	
-	
+	char bufPipe[BUFPIPESIZE];
 
 	while(1){
 		//usiamo la select per evitare che le read e le accept si blocchino
@@ -109,11 +109,22 @@ int masterFun(){
 				//se è proprio fd_sdk faccio la accept che NON SI BLOCCHERÀ
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
-					fprintf(stdout,"client connesso %ld\n",fd_client);
-
+					fprintf(stdout,"client connesso %d\n",fd_client);
+					
 					//nella mascheraa set metto a 1 il bit della fd_client(ora è attivo)
 					FD_SET(fd_client,&set);
 					//tengo sempre aggiornato il descrittore con indice massimo
+					if(fd_client > fd_num)
+						fd_num = fd_client;
+
+				}else if(fd == pfd[0]){
+					
+					read(fd,bufPipe,BUFPIPESIZE);
+					if((fd_client = atoi(bufPipe)) == 0)
+						return 1;
+
+					FD_SET(fd_client,&set);
+
 					if(fd_client > fd_num)
 						fd_num = fd_client;
 				}else{
@@ -136,12 +147,16 @@ int masterFun(){
 
 void* workerFun(){
 	int end = 0;
+	char bufPipe[BUFPIPESIZE];
+	
+	
+
 	while(!end){
 		LOCK(&request_mux);
-		printf("sono il thread %ld\n", pthread_self());
+		fprintf(stdout,"sono il thread %ld\n", pthread_self());
 		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
-		printQueueInt(requestQueue);
+		// printQueueInt(requestQueue);
 
 		int fd = (long)dequeue(requestQueue);
 		if(!isQueueEmpty(requestQueue))
@@ -153,10 +168,20 @@ void* workerFun(){
 			exit(EXIT_FAILURE);
 		
 		char buf[BUFSIZE];
-		read(fd,buf,BUFSIZE);
+		if(readn(fd,buf,1) == 0){
+			fprintf(stdout,"client %d disconnesso\n",fd);
+			continue;
+		}
+
+		fprintf(stdout,"ricevuto %s\n",buf);
+		buf[0] = toupper(buf[0]);
+		writen(fd,buf,1);
 		// upperString(buf,strlen(buf));
-		write(fd,buf,strlen(buf));
-		close(fd);
+		//write(fd,buf,strlen(buf));
+		//close(fd);
+		sprintf(bufPipe,"%d",fd);
+		printf("%s\n",bufPipe);
+		write(pfd[1],bufPipe,4);
 	}
 	return NULL;
 }
