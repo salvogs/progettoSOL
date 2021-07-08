@@ -4,8 +4,7 @@
 #include "../include/api.h"
 
 int openConnection(const char* sockname, int msec, const struct timespec abstime){
-	//file descriptor client FD_CLIENT
-	
+		
 	//creazione client socket
 	ec(FD_CLIENT=socket(AF_UNIX,SOCK_STREAM,0),-1,"client socket",return -1);
 
@@ -15,8 +14,6 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 
 	
 	
-	printf("connessione..\n");
-
 	time_t t; //ritorna il tempo trascorso da 00:00:00 UTC, January 1, 1970
 	
 	struct timespec tsleep = {msec/1000,(msec % 1000)*1000000}; //modulo per overflow campo .tv_nsec
@@ -29,23 +26,36 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 				return -1;
 			}
 			if(PRINTS == 1)
-				fprintf(stdout,"Impossibile stabilire una connessione con il server. Riprovo tra %d msec\n",msec);
+				fprintf(stdout,"Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",msec);
 			
 		}else{
 			return -1;
 		}
-		//sleep(1);
+		
 		nanosleep(&tsleep,NULL);
-
 	}
 
-
-	printf("connessione stabilita\n");
+	if(PRINTS == 1)
+		fprintf(stdout,"Connessione con il socket stabilita.\n");
+	
+	
 	return 0;
 	
+}
 
-	
+
+
+int closeConnection(const char* sockname){
+	if(!sockname){
+		errno = EINVAL;
+		return -1;
+	}
+
+	if(close(FD_CLIENT) == -1)
+		return -1;
+
+	if(PRINTS == 1)
+		fprintf(stdout,"Connessione chiusa.\n");
+		
 	return 0;
-	
-	
 }
