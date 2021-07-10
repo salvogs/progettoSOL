@@ -73,6 +73,31 @@ void* dequeue(queue* q){
 	return elem;
 	
 }
+/* pop dalla coda senza ritornare il dato
+
+return: 1 no elementi in coda
+		0 successo
+*/
+int removeFromQueue(queue* q){
+
+	if(isQueueEmpty(q))
+		return 1;
+		
+	data* newHead = q->head->next;
+	if(newHead == NULL){
+		q->ndata--;
+		free(q->head);
+		return 0;
+	}
+
+	newHead->prev = NULL;
+	free(q->head);
+	q->head = newHead;
+	q->ndata--;
+
+	return 0;
+}
+
 
 int findQueue(queue* q,void* elem){
 	if(isQueueEmpty(q))

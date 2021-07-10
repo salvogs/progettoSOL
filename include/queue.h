@@ -28,6 +28,8 @@ int enqueue(queue* q, void* data);
 
 void* dequeue(queue* q);
 
+int removeFromQueue(queue* q);
+
 int findQueue(queue* q,void* elem);
 
 void destroyData(queue* q);
