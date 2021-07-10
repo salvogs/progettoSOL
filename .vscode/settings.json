@@ -9,6 +9,10 @@
 		"time.h": "c",
 		"types.h": "c",
 		"utils.h": "c",
-		"un.h": "c"
+		"un.h": "c",
+		"cstdio": "c",
+		"limits.h": "c",
+		"server.h": "c",
+		"fs.h": "c"
 	}
 }

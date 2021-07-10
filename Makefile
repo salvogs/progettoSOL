@@ -7,7 +7,7 @@ HEADDIR = include
 BINDIR = bin
 LIBS = -lpthread
 
-SERVERDEPLIST = $(SRCDIR)/server.c $(SRCDIR)/configParser.c $(SRCDIR)/queue.c $(SRCDIR)/utils.c $(SRCDIR)/icl_hash.c 
+SERVERDEPLIST = $(SRCDIR)/server.c $(SRCDIR)/configParser.c $(SRCDIR)/queue.c $(SRCDIR)/utils.c $(SRCDIR)/icl_hash.c $(SRCDIR)/fs.c 
 
 CLIENTDEPLIST = $(SRCDIR)/client.c $(SRCDIR)/clientParser.c $(SRCDIR)/api.c $(SRCDIR)/queue.c $(SRCDIR)/utils.c
 

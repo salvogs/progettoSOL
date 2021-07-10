@@ -12,9 +12,10 @@
 #include <pthread.h>
 #include "../include/utils.h"
 #include "../include/configParser.h"
+#include "../include/fs.h"
 #include "../include/server.h"
 #include "../include/queue.h"
-#include "../include/icl_hash.h"
+#include "../include/comPrt.h"
 
 
 #define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
@@ -34,8 +35,8 @@
 #define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
 #define BUFSIZE 2048
 #define BUFPIPESIZE 4
+#define DELIM_CONFIG_FILE ":"
 
-fsT* fsConfig = NULL;
 
 pthread_mutex_t request_mux = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
@@ -49,23 +50,17 @@ int pfd[2];
 
 
 
-
+fsT* storage;
 
 int masterFun(){
 
-	// creazione hash table che ospitera' il file system
-	icl_hash_t* ht = icl_hash_create(fsConfig->maxFileNum,hash_pjw,string_compare);
-	ec(ht,NULL,"creazione hash table",return 1);
-	
-
-	
 	int fd_skt, fd_num = 0,fd;
 	// creazione endpoint
 	ec(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"server socket",return 1);
 	// inizializzo campi necessari alla chiamata di bind
-	(void) unlink(fsConfig->SOCKNAME);
+	(void) unlink(storage->SOCKNAME);
 	struct sockaddr_un sa;
-	strncpy(sa.sun_path, fsConfig->SOCKNAME,UNIX_PATH_MAX);
+	strncpy(sa.sun_path, storage->SOCKNAME,UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX; //famiglia indirizzo
 	
 	//assegno un indirizzo a un socket
@@ -118,11 +113,11 @@ int masterFun(){
 						fd_num = fd_client;
 
 				}else if(fd == pfd[0]){
-					
+					puts("quiii\n");
 					read(fd,bufPipe,BUFPIPESIZE);
 					if((fd_client = atoi(bufPipe)) == 0)
 						return 1;
-
+					
 					FD_SET(fd_client,&set);
 
 					if(fd_client > fd_num)
@@ -168,19 +163,45 @@ void* workerFun(){
 			exit(EXIT_FAILURE);
 		
 		char buf[BUFSIZE];
-		if(readn(fd,buf,1) == 0){
+		memset(buf,'\0',BUFSIZE);
+		int letti;
+		if((letti = readn(fd,buf,9)) == 0){
 			fprintf(stdout,"client %d disconnesso\n",fd);
+			close(fd);
 			continue;
 		}
+		printf("letti: %d\n",letti);
 
-		fprintf(stdout,"ricevuto %s\n",buf);
-		buf[0] = toupper(buf[0]);
-		writen(fd,buf,1);
+		int op = buf[0] - '0';
+		printf("operazione: %d\n dim: %s\n",op,buf+1);
+		
+		long reqLen;
+
+
+		switch(op){
+			case OPEN_FILE:{
+				// openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
+				if(isNumber(buf+1,&reqLen) != 0){
+					return NULL;
+				}
+				openFile(fd,reqLen);
+			}	
+			
+			break;
+
+
+
+			default:;
+		}
+
+
 		// upperString(buf,strlen(buf));
 		//write(fd,buf,strlen(buf));
 		//close(fd);
+		//printf("%s\n",bufPipe);
+		
+		
 		sprintf(bufPipe,"%d",fd);
-		printf("%s\n",bufPipe);
 		write(pfd[1],bufPipe,4);
 	}
 	return NULL;
@@ -205,22 +226,14 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 	
-	/*
-		per prima cosa leggo il file di configurazione 
-		memorizzando i parametri in una struct 
-	*/
 	
-
-	fsConfig = parseConfig(argv[1],":");
-	if(!fsConfig)
+	if((storage = createFileStorage(argv[1],DELIM_CONFIG_FILE)) == NULL)
 		return 1;
-	
-
 	
 
 	printf("MAXCAPACITY: %ld, MAXFILENUM: %ld"
 		 "WORKERNUM %ld, SOCKNAME %s, LOGPATH %s\n"\
-		 ,fsConfig->maxCapacity,fsConfig->maxFileNum,fsConfig->workerNum,fsConfig->SOCKNAME,fsConfig->logPath);
+		 ,storage->maxCapacity,storage->maxFileNum,storage->workerNum,storage->SOCKNAME,storage->logPath);
 
 	
 
@@ -235,7 +248,7 @@ int main(int argc, char* argv[]){
 
 
 	pthread_t *tid; //array dove mantenere tid dei worker
-	tid = spawnThread(fsConfig->workerNum);
+	tid = spawnThread(storage->workerNum);
 	
 	/*
 		accetto richieste da parte dei client

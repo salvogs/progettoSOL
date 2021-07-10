@@ -12,7 +12,7 @@
 #define LOGPATH_ERR "LOGPATH: deve essere un path terminato con .txt\n"
 
 
-#include "../include/server.h"
+#include "../include/fs.h"
 /*
 	converte, se il campo 'p' non e' gia' stato settato,
 	il parametro di configurazione in intero e controlla 

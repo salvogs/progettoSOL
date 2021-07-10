@@ -46,13 +46,13 @@ ssize_t readn(int fd, void *ptr, size_t n)
         }
         else if (nread == 0)
         {
-            puts("eof");
+            //puts("eof");
             break; /* EOF */
         }
         nleft -= nread;
         ptr += nread;
     }
-    puts("fineciclo");
+    //puts("fineciclo");
     return (n - nleft); /* return >= 0  (bytes read) */
 }
 
