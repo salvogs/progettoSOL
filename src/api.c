@@ -2,6 +2,11 @@
 #include <string.h> //
 #include "../include/utils.h"
 #include "../include/api.h"
+#include "../include/comPrt.h"
+
+
+char *realpath(const char *path, char *resolved_path);
+
 
 int openConnection(const char* sockname, int msec, const struct timespec abstime){
 		
@@ -58,4 +63,55 @@ int closeConnection(const char* sockname){
 		fprintf(stdout,"Connessione chiusa.\n");
 		
 	return 0;
+}
+
+
+int openFile(const char* pathname, int flags){
+
+	pathname = realpath(pathname,NULL);
+	ec(pathname,NULL,"pathname",return -1);
+
+	// openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
+
+
+
+	int reqLen = sizeof(char) + sizeof(long) + strlen(pathname) + sizeof(char) +1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen+1,1);
+	ec(req,NULL,"calloc",return -1);
+
+	snprintf(req,reqLen,"%d%8ld%s%d",OPEN_FILE,strlen(pathname),pathname,flags);
+	printf("reqLen: %d\n req: %s\n",reqLen,req);
+
+	if(writen(FD_CLIENT,req,reqLen-1) == -1){
+		perror("writen");
+		free(req);
+		return -1;
+	}
+
+	free(req);
+	char* resBuf = calloc(1,1);
+	ec(resBuf,NULL,"calloc",return -1);
+
+	//leggo la risposta (da un byte)
+	if(readn(FD_CLIENT,resBuf,1) == -1){
+		perror("readn");
+		free(req);
+		return -1;
+	}
+	long response;
+
+	if(isNumber(resBuf,&response) != 0){
+		return -1;
+	}
+
+	if(response == APPOST){
+		fprintf(stdout,"tt'appost\n");
+		return 0;
+	}else{
+		fprintf(stderr,"AHIA!\n");
+		return -1;
+	}
+	return 0;
+	
 }

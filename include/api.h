@@ -1,7 +1,7 @@
 #ifndef API_H
 #define API_H
 
-// #define _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
 
 #include <time.h>
 #include <sys/types.h>     
@@ -9,7 +9,8 @@
 #include <sys/un.h>/* struttura che rappresenta un indirizzo */
 #include <errno.h>
 #include <unistd.h>
-
+#include <limits.h>
+#include <stdlib.h>
 
 #define UNIX_PATH_MAX 108
 
