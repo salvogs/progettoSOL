@@ -18,6 +18,25 @@
 #include "../include/comPrt.h"
 
 
+#define MY_PERROR(a,b)  \
+ 	switch(b){\
+		case FILE_EXISTS:\
+		 	fprintf(stderr,"%s: file già esistente\n",a);\
+		break;\
+		case SERVER_ERROR:\
+		 	fprintf(stderr,"%s: errore interno del server\n",a);\
+		break;\
+		case BAD_REQUEST:\
+		 	fprintf(stderr,"%s: richiesta incompleta\n",a);\
+		break;\
+		default:;break;\
+	 }
+
+
+
+
+
+
 #define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
 	fprintf(stderr,"errore creazione thread\n"); \
 	exit(EXIT_FAILURE);}
@@ -113,7 +132,6 @@ int masterFun(){
 						fd_num = fd_client;
 
 				}else if(fd == pfd[0]){
-					puts("quiii\n");
 					read(fd,bufPipe,BUFPIPESIZE);
 					if((fd_client = atoi(bufPipe)) == 0)
 						return 1;
@@ -141,10 +159,12 @@ int masterFun(){
 }
 
 void* workerFun(){
-	int end = 0;
+	int ret,end = 0;
+
 	char bufPipe[BUFPIPESIZE];
 	
 	
+	char resBuf[RESPONSE_SIZE+1];
 
 	while(!end){
 		LOCK(&request_mux);
@@ -184,7 +204,21 @@ void* workerFun(){
 				if(isNumber(buf+1,&reqLen) != 0){
 					return NULL;
 				}
-				openFile(fd,reqLen);
+				printf("prima di openFile %d\n",storage->fileNum);
+				errno = 0;
+				ret = openFile(storage,fd,reqLen);
+				if(errno){
+					perror("open file");
+				}
+				
+				snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+
+
+				// invio risposta al client
+				ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+
+
+				printf("dopo di openFile %d\n",storage->fileNum);
 			}	
 			
 			break;

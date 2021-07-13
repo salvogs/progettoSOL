@@ -23,6 +23,9 @@
 */
 
 
+#define RESPONSE_SIZE 1
+
+
 // operazioni
 
 #define OPEN_FILE 1
@@ -34,6 +37,11 @@
 #define O_LOCK 2
 
 // risposte server
+
+#define SUCCESS 0
+#define SERVER_ERROR 1
+#define FILE_EXISTS 2
+#define BAD_REQUEST 3
 #define OP_REFUSED -1
 
 #define APPOST 0

@@ -2,7 +2,7 @@
 #include <string.h> //
 #include "../include/utils.h"
 #include "../include/api.h"
-#include "../include/comPrt.h"
+
 
 
 char *realpath(const char *path, char *resolved_path);
@@ -30,8 +30,8 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 			if(t >= abstime.tv_nsec){
 				return -1;
 			}
-			if(PRINTS == 1)
-				fprintf(stdout,"Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",msec);
+		
+			PRINT(fprintf(stdout,"Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",msec))
 			
 		}else{
 			return -1;
@@ -40,8 +40,8 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 		nanosleep(&tsleep,NULL);
 	}
 
-	if(PRINTS == 1)
-		fprintf(stdout,"Connessione con il socket stabilita.\n");
+	
+	PRINT(fprintf(stdout,"Connessione con il socket stabilita.\n"))
 	
 	
 	return 0;
@@ -105,7 +105,7 @@ int openFile(const char* pathname, int flags){
 		return -1;
 	}
 
-	if(response == APPOST){
+	if(response == SUCCESS){
 		fprintf(stdout,"tt'appost\n");
 		return 0;
 	}else{

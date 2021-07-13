@@ -1,7 +1,8 @@
 #ifndef API_H
 #define API_H
 
-#define _DEFAULT_SOURCE
+// #define _DEFAULT_SOURCE
+
 
 #include <time.h>
 #include <sys/types.h>     
@@ -11,12 +12,17 @@
 #include <unistd.h>
 #include <limits.h>
 #include <stdlib.h>
+#include "../include/comPrt.h"
 
 #define UNIX_PATH_MAX 108
 
 
 int FD_CLIENT;
 int PRINTS; //se 1 le stampe per ogni operazione sono abilitate
+
+
+#define PRINT(str)\
+	if(PRINTS)	(str);
 
 /*
 Viene aperta una connessione AF_UNIX al socket file sockname. Se il server non accetta immediatamente la

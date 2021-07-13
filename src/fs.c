@@ -9,6 +9,17 @@
 
 
 
+#define IS_O_CREATE_SET(flags) \
+	(flags == 1 || flags == 3) ? 1 : 0
+	
+
+#define IS_O_LOCK_SET(flags) \
+	(flags == 2 || flags == 3) ? 1 : 0
+
+
+
+
+
 fsT* createFileStorage(char* configPath, char* delim){
 	
 	/*
@@ -21,13 +32,15 @@ fsT* createFileStorage(char* configPath, char* delim){
 
 	// alloco hash table
 	ec(storage->ht = icl_hash_create(storage->maxFileNum,NULL,NULL), NULL,"hash create",return NULL)
-	printf("dentroo %p\n",storage);
-
+	
+	storage->capacity = 0;
+	storage->fileNum = 0;
+	
 	return storage;	
 }
 
 
-int openFile(int fd, long pathLen){
+int openFile(fsT* storage, int fd, long pathLen){
 	
 		int letti = 0;
 		
@@ -40,7 +53,7 @@ int openFile(int fd, long pathLen){
 			fprintf(stdout,"client %d disconnesso\n",fd);
 			return -1;
 		}
-		printf("letti: %d\n",letti);
+		//printf("letti: %d\n",letti);
 
 		char* path = strndup(req,pathLen);
 		ec(path,NULL,"strndup",return -1)
@@ -67,7 +80,52 @@ int openFile(int fd, long pathLen){
 		//printf("\n");
 		
 		
-		writen(fd,"0",1);
 
+
+
+		short int create = IS_O_CREATE_SET(flags), lock = IS_O_LOCK_SET(flags);
+
+		
+
+
+		
+		fT* fPtr = icl_hash_find(storage->ht,path);
+
+		if(fPtr){ // se il file è già nel file storage
+			if(create){
+				fprintf(stderr,"file esistente\n");
+					return FILE_EXISTS;
+			}
+			if(lock){
+				// LOCK
+			}	
+
+		}else{ // il file deve essere creato
+			if(!create){
+				fprintf(stderr,"flag O_CREATE non specificato\n");
+				return BAD_REQUEST;
+			}
+			// LOCK
+			if(storage->fileNum < storage->maxFileNum)
+				storage->fileNum++;
+			else{}
+
+			if(!(fPtr = malloc(sizeof(fT))))
+				return SERVER_ERROR;
+
+			fPtr->pathname = malloc(strlen(path)+1);
+			strncpy(fPtr->pathname,path,strlen(path)+1);
+
+			fPtr->size = 0;
+			fPtr->content = NULL;
+			
+
+			if(!icl_hash_insert(storage->ht,path,fPtr))
+				return SERVER_ERROR;
+
+
+		}
+		
+		
 		return 0;
 }
