@@ -39,6 +39,6 @@ typedef struct{
 parseT* parser(int argc, char* argv[]);
 int enqueueArg(queue* argQueue, char opt,char* arg);
 void destroyClientParsing(parseT* parseResult);
-
+void freeOp(void* op);
 
 #endif

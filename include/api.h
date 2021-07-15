@@ -12,17 +12,51 @@
 #include <unistd.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include "../include/comPrt.h"
 
 #define UNIX_PATH_MAX 108
+
+
+// char* intToOp(int op){
+// 	switch(op){
+// 		case OPEN_FILE: return "OPEN FILE"; break;
+// 		case CLOSE_FILE: return "CLOSE FILE"; break;
+// 		case WRITE_FILE: return "WRITE FILE"; break;
+// 	}
+// }
+
+// a = arg r = retvalue
+#define PRINTER(op,a,r)  \
+	if(PRINTS){\
+		switch(r){\
+			case SUCCESS:\
+				fprintf(stdout,"%s : %s : SUCCESSO\n",op,a);\
+			break;\
+			case FILE_EXISTS:\
+				fprintf(stdout,"%s : %s : FILE GIA' ESISTENTE\n",op,a);\
+			break;\
+			case SERVER_ERROR:\
+				fprintf(stdout,"%s : %s : ERRORE INTERNO SERVER\n",op,a);\
+			break;\
+			case BAD_REQUEST:\
+				fprintf(stdout,"%s : %s : RICHIESTA INCOMPLETA\n",op,a);\
+			break;\
+			default:;break;\
+		}\
+	}\
+
+#define PRINT(a)\
+	if(PRINTS)	(a);
+
+
+
 
 
 int FD_CLIENT;
 int PRINTS; //se 1 le stampe per ogni operazione sono abilitate
 
 
-#define PRINT(str)\
-	if(PRINTS)	(str);
 
 /*
 Viene aperta una connessione AF_UNIX al socket file sockname. Se il server non accetta immediatamente la

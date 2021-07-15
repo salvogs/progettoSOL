@@ -3,6 +3,13 @@
 #include "../include/utils.h"
 #include "../include/api.h"
 
+//rb = response buffer r = intResponse
+#define RESPONSE_FROM_SERVER(rb,r) \
+	if(readn(FD_CLIENT,rb,1) == -1){\
+		perror("readn");\
+		return -1;\
+	}\
+	r = rb[0] - '0';
 
 
 char *realpath(const char *path, char *resolved_path);
@@ -68,20 +75,21 @@ int closeConnection(const char* sockname){
 
 int openFile(const char* pathname, int flags){
 
-	pathname = realpath(pathname,NULL);
-	ec(pathname,NULL,"pathname",return -1);
+	char* path = realpath(pathname,NULL);
+	ec(path,NULL,"pathname",return -1);
 
 	// openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
 
 
 
-	int reqLen = sizeof(char) + sizeof(long) + strlen(pathname) + sizeof(char) +1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(long) + strlen(path) + sizeof(char) +1; //+1 finale percheè snprintf include anche il \0
 
-	char* req = calloc(reqLen+1,1);
+	char* req = calloc(reqLen,1);
 	ec(req,NULL,"calloc",return -1);
 
-	snprintf(req,reqLen,"%d%8ld%s%d",OPEN_FILE,strlen(pathname),pathname,flags);
-	printf("reqLen: %d\n req: %s\n",reqLen,req);
+	snprintf(req,reqLen,"%d%8ld%s%d",OPEN_FILE,strlen(path),path,flags);
+	//printf("reqLen: %d\n req: %s\n",reqLen,req);
+	
 
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
 		perror("writen");
@@ -90,28 +98,97 @@ int openFile(const char* pathname, int flags){
 	}
 
 	free(req);
+	
 	char* resBuf = calloc(1,1);
 	ec(resBuf,NULL,"calloc",return -1);
+	long response;
 
-	//leggo la risposta (da un byte)
-	if(readn(FD_CLIENT,resBuf,1) == -1){
-		perror("readn");
+	RESPONSE_FROM_SERVER(resBuf,response)
+	
+	free(resBuf);
+	
+	PRINTER("OPEN FILE",path,response)
+
+	free(path);
+
+	if(response != SUCCESS){
+		return -1;
+	}
+
+	return 0;
+	
+}
+
+
+
+
+
+int writeFile(const char* pathname, const char* dirname){
+	
+	struct stat info;
+    ec_n(stat(pathname, &info),0,pathname,return -1)
+
+	long fsize = info.st_size;
+
+	//printf("info sizeeee %ld\n",fsize);
+
+	FILE* fptr = fopen(pathname,"r");
+	ec(fptr,NULL,"fopen",return -1)
+
+
+	//leggo il file su un buffer
+
+	void* buf = malloc(fsize);
+	ec(buf,NULL,"malloc",return -1);
+
+	if(fread(buf,1,fsize,fptr) != fsize){
+		fprintf(stderr,"errore lettura file\n");
+		fclose(fptr);
+		free(buf);
+		return -1;
+	}
+	fclose(fptr);
+	// fseek(fptr, 0L, SEEK_END);
+	// fsize = ftell(fptr);
+
+	// printf("ftellllll %ld\n",fsize);
+
+	// writeFile:1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)8Byte(dimensione file)dimensione_fileByte(file vero e proprio)
+
+	int reqLen = sizeof(char) + sizeof(long) + strlen(pathname) + sizeof(long) + fsize +1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen,1);
+	ec(req,NULL,"calloc",return -1);
+
+	snprintf(req,reqLen,"%d%8ld%s%8ld",WRITE_FILE,strlen(pathname),pathname,fsize);
+
+	memcpy((req + strlen(req)),buf,fsize);
+
+	if(writen(FD_CLIENT,req,reqLen-1) == -1){
+		perror("writen");
 		free(req);
 		return -1;
 	}
+
+	free(req);
+
+
+	free(buf);
+	
+	char* resBuf = calloc(1,1);
+	ec(resBuf,NULL,"calloc",return -1);
+
 	long response;
 
-	if(isNumber(resBuf,&response) != 0){
-		return -1;
-	}
-
-	if(response == SUCCESS){
-		fprintf(stdout,"tt'appost\n");
-		return 0;
-	}else{
-		fprintf(stderr,"AHIA!\n");
-		return -1;
-	}
-	return 0;
+	RESPONSE_FROM_SERVER(resBuf,response)
 	
+	free(resBuf);
+
+	PRINTER("WRITE FILE",pathname,response)
+
+	if(response != SUCCESS)
+		return -1;
+
+	return 0;
+
 }

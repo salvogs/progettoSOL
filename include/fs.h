@@ -28,8 +28,10 @@ typedef struct{
 
 
 
-fsT* createFileStorage(char* configPath, char* delim);
+fsT* create_fileStorage(char* configPath, char* delim);
 
-int openFile(fsT* storage, int fd, long pathLen);
+int open_file(fsT* storage, int fd, long pathLen);
+
+int write_file(fsT* storage,int fd,int pathLen);
 
 #endif

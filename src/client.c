@@ -40,9 +40,10 @@ int isPointDir(char *dir){
 
     return 1;
 }
-void recursiveVisit(char* pathname,long n){
+void recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 	
 	DIR *d;
+	
     //tento di aprire la directory 
 	ec(d=opendir(pathname),NULL,"opendir",return)
 
@@ -50,7 +51,9 @@ void recursiveVisit(char* pathname,long n){
     //printf("Directory: %s\n",name);
 
     struct dirent *file;
-    while((errno = 0, file = readdir(d))!=NULL && n > 0){
+
+    while((errno = 0, file = readdir(d))!=NULL && (!limited || (*n) > 0)){
+		
         int nameLen = strlen(pathname)+strlen(file->d_name)+2; //  '\0'+'\'
         char absoluteName[nameLen];
         //concatenazione directory e filename per ottenere un path assoluto
@@ -64,10 +67,15 @@ void recursiveVisit(char* pathname,long n){
         if(isPointDir(file->d_name) == 0){ //non è una point-dir
             if(file->d_type == DT_DIR){
                 //if(n != 0)
-					recursiveVisit(absoluteName,n); //chiamata ricorsiva
+					recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
 			}else{
-                openFile(absoluteName,O_CREATE | O_LOCK);
-				// n--;
+                if(openFile(absoluteName,O_CREATE | O_LOCK) == 0){ //file creato sul server
+					//adesso bisogna inviare al server il contenuto del file
+					if(writeFile(absoluteName,dirname) == 0){
+						(*n)--;
+					}
+					
+				}
 			}
         }
     }
@@ -87,7 +95,7 @@ int w_handler(char* args,char* dirname){
 
 	char* save;
 	char* path;
-	int n = 10;
+	long n = 0;
 
 	if(!(path = strtok_r(args,",",&save))){
 		errno = EINVAL;
@@ -100,21 +108,27 @@ int w_handler(char* args,char* dirname){
 		perror("realpath");
 		return 1;
 	}
+	
+
+	char* nfile;
+	if((nfile = strtok_r(NULL,"n=",&save))){
+		if(isNumber(nfile,(long*)&n) != 0){
+			free(path);
+			errno = EINVAL;
+			perror("n=");
+			return 1;
+		}
+	}
 	free(path);
 
+	//printf("scrivo dir: %s n file = %d\n",pathname,n);
+	int limited = 0;
+	if(n > 0)
+		limited = 1;
 
-	// if((nfile = strtok_r(NULL,"n=",&save))){
-	// 	if(isNumber(nfile,(long*)&n) != 0){
-	// 		errno = EINVAL;
-	// 		perror("n=");
-	// 		return 1;
-	// 	}
-	// }
-	
-	printf("scrivo dir: %s n file = %d\n",pathname,n);
-	
-	recursiveVisit(pathname,n);
+	recursiveVisit(pathname,&n,limited,dirname);
    	// openFile(args,O_CREATE | O_LOCK);
+	free(pathname);
 
 	return 0;
 }
@@ -160,11 +174,13 @@ int main(int argc, char* argv[]){
 		op = dequeue(args);
 		switch(op->opt){
 			case 'w':{
-				nextOp = args->head->data;
-				if(nextOp && nextOp->opt == 'D'){
-					removeFromQueue(args); //rimuovo il -D
-					dirname = nextOp->arg;
-					//fprintf(stdout,"scrivo %s e rimpiazzo su %s\n",op->arg,dirname);
+				if(args->head){
+					nextOp = args->head->data;
+					if(nextOp && nextOp->opt == 'D'){
+						removeFromQueue(args); //rimuovo il -D
+						dirname = nextOp->arg;
+						//fprintf(stdout,"scrivo %s e rimpiazzo su %s\n",op->arg,dirname);
+					}
 				}else{
 					dirname = NULL;
 					//fprintf(stdout,"scrivo %s\n",op->arg);
@@ -231,6 +247,9 @@ int main(int argc, char* argv[]){
 
 			default:;
 		}
+
+
+		free(op);
 	}
 	
 	
@@ -241,5 +260,9 @@ int main(int argc, char* argv[]){
 
 	ec(closeConnection(parseResult->SOCKNAME),-1,"close connection",return 1);
 	
+
+	
+	destroyClientParsing(parseResult);
+
 	return 0;
 }

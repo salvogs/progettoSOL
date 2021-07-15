@@ -20,7 +20,7 @@
 
 
 
-fsT* createFileStorage(char* configPath, char* delim){
+fsT* create_fileStorage(char* configPath, char* delim){
 	
 	/*
 		per prima cosa effettuo il parsing del il file di configurazione 
@@ -40,60 +40,41 @@ fsT* createFileStorage(char* configPath, char* delim){
 }
 
 
-int openFile(fsT* storage, int fd, long pathLen){
-	
-		int letti = 0;
+int open_file(fsT* storage, int fd, long pathLen){
 		
 		//pathLen +1 per prendere anche i flags
 
 		char* req = calloc(pathLen+1,1);
 		ec(req,NULL,"calloc",return -1)
 
-		if((letti = readn(fd,req,pathLen+1)) == 0){
+		if((readn(fd,req,pathLen+1)) == 0){
 			fprintf(stdout,"client %d disconnesso\n",fd);
+			free(req);
 			return -1;
 		}
-		//printf("letti: %d\n",letti);
+		
 
 		char* path = strndup(req,pathLen);
-		ec(path,NULL,"strndup",return -1)
+		if(!path){
+			perror("strndup");
+			free(req);
+			return -1;
+		}
 
-
-		printf("%s\n",path);
-		// printf("%s\n",req);
-
-
-		// if((letti = readn(fd,req,1)) == 0){
-		// 	fprintf(stdout,"client %d disconnesso\n",fd);
-		// 	return -1;			
-		// }
 
 		int flags = req[pathLen] - '0';
-		printf("flags:%d\n",flags);
-
+		
 		free(req);
-
-
-		// for(int i = 0; i <= letti;i++){
-		// 	printf("%c",buf[i]);
-		// }
-		//printf("\n");
-		
-		
-
 
 
 		short int create = IS_O_CREATE_SET(flags), lock = IS_O_LOCK_SET(flags);
 
-		
-
-
-		
+	
 		fT* fPtr = icl_hash_find(storage->ht,path);
 
 		if(fPtr){ // se il file è già nel file storage
 			if(create){
-				fprintf(stderr,"file esistente\n");
+				//fprintf(stderr,"file esistente\n");
 					return FILE_EXISTS;
 			}
 			if(lock){
@@ -115,7 +96,7 @@ int openFile(fsT* storage, int fd, long pathLen){
 
 			fPtr->pathname = malloc(strlen(path)+1);
 			strncpy(fPtr->pathname,path,strlen(path)+1);
-
+	
 			fPtr->size = 0;
 			fPtr->content = NULL;
 			
@@ -123,9 +104,77 @@ int openFile(fsT* storage, int fd, long pathLen){
 			if(!icl_hash_insert(storage->ht,path,fPtr))
 				return SERVER_ERROR;
 
-
 		}
 		
 		
 		return 0;
+}
+
+
+int write_file(fsT* storage,int fd,int pathLen){
+	
+	char* req = calloc(pathLen+8,1);
+	ec(req,NULL,"calloc",return -1)
+
+	//printf("pathlen: %d\n",pathLen);
+
+	//leggo pathname e dimensioneFile
+	if((readn(fd,req,pathLen+8)) == 0){
+			fprintf(stdout,"client %d disconnesso\n",fd);
+			free(req);
+			return -1;
+	}
+  
+	
+	char* path = strndup(req,pathLen);
+	if(!path){
+		perror("strndup");
+		free(req);
+		return -1;
+	}
+		
+
+
+	//printf("%s\n",path);
+	char* fileSize = strndup(req+pathLen,sizeof(long));
+	if(!fileSize){
+		perror("strndup");
+		free(req);
+		free(path);
+		return -1;
+	}
+
+	free(req);
+
+
+	long fsize = 0;	
+
+
+	if(isNumber(fileSize,&fsize) != 0){
+		free(fileSize);
+		free(path);
+		return -1;
+	}
+
+	free(fileSize);
+
+	fT* fPtr = icl_hash_find(storage->ht,path);
+	if(!fPtr){
+		//file non ancora creato
+		free(path);
+		return -1;
+	}
+	free(path);
+
+	ec(fPtr->content = malloc(fsize),NULL,"malloc",return -1);
+	
+	
+
+	if((readn(fd,fPtr->content,fsize)) == 0){
+			fprintf(stdout,"client %d disconnesso\n",fd);
+			return -1;
+	}
+
+	return 0;
+
 }

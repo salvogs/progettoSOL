@@ -29,7 +29,8 @@
 // operazioni
 
 #define OPEN_FILE 1
-
+#define CLOSE_FILE 2
+#define WRITE_FILE 3
 
 // flag openFile
 
@@ -42,7 +43,7 @@
 #define SERVER_ERROR 1
 #define FILE_EXISTS 2
 #define BAD_REQUEST 3
-#define OP_REFUSED -1
+// #define OP_REFUSED -1
 
 #define APPOST 0
 

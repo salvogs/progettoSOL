@@ -18,24 +18,6 @@
 #include "../include/comPrt.h"
 
 
-#define MY_PERROR(a,b)  \
- 	switch(b){\
-		case FILE_EXISTS:\
-		 	fprintf(stderr,"%s: file già esistente\n",a);\
-		break;\
-		case SERVER_ERROR:\
-		 	fprintf(stderr,"%s: errore interno del server\n",a);\
-		break;\
-		case BAD_REQUEST:\
-		 	fprintf(stderr,"%s: richiesta incompleta\n",a);\
-		break;\
-		default:;break;\
-	 }
-
-
-
-
-
 
 #define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
 	fprintf(stderr,"errore creazione thread\n"); \
@@ -161,16 +143,17 @@ int masterFun(){
 void* workerFun(){
 	int ret,end = 0;
 
-	char bufPipe[BUFPIPESIZE];
+	char bufPipe[BUFPIPESIZE] = "";
 	
-	
-	char resBuf[RESPONSE_SIZE+1];
+	char reqBuf[BUFSIZE];
+
+	char resBuf[RESPONSE_SIZE+1] = "";
 
 	while(!end){
 		LOCK(&request_mux);
-		fprintf(stdout,"sono il thread %ld\n", pthread_self());
 		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
+		// fprintf(stdout,"sono il thread %ld\n", pthread_self());
 		// printQueueInt(requestQueue);
 
 		int fd = (long)dequeue(requestQueue);
@@ -182,48 +165,61 @@ void* workerFun(){
 		if(fd == 1)
 			exit(EXIT_FAILURE);
 		
-		char buf[BUFSIZE];
-		memset(buf,'\0',BUFSIZE);
-		int letti;
-		if((letti = readn(fd,buf,9)) == 0){
+		
+		//memset(buf,'\0',BUFSIZE);
+		
+		if((readn(fd,reqBuf,9)) == 0){
 			fprintf(stdout,"client %d disconnesso\n",fd);
 			close(fd);
 			continue;
 		}
-		printf("letti: %d\n",letti);
+		
 
-		int op = buf[0] - '0';
-		printf("operazione: %d\n dim: %s\n",op,buf+1);
+		int op = reqBuf[0] - '0';
+		// printf("operazione: %d\n dim: %s\n",op,buf+1);
+		// printf("operazione: %d\n",op);
 		
 		long reqLen;
-
+		
 
 		switch(op){
 			case OPEN_FILE:{
 				// openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
-				if(isNumber(buf+1,&reqLen) != 0){
-					return NULL;
-				}
-				printf("prima di openFile %d\n",storage->fileNum);
+				// isNumber(buf+1,&reqLen); // reqLen = lunghezza pathname
+				reqLen = atoi(reqBuf+1);
+			
+				//printf("prima di openFile %d\n",storage->fileNum);
 				errno = 0;
-				ret = openFile(storage,fd,reqLen);
+				ret = open_file(storage,fd,reqLen);
 				if(errno){
 					perror("open file");
 				}
 				
 				snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
 
-
 				// invio risposta al client
 				ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
 
-
-				printf("dopo di openFile %d\n",storage->fileNum);
+				//printf("dopo di openFile %d\n",storage->fileNum);
+			
 			}	
 			
 			break;
+			
+			case WRITE_FILE:{
+				reqLen = atoi(reqBuf+1);
+				//isNumber(buf+1,&reqLen) != 0) // reqLen = lunghezza pathname
+					
+				
+				ret = write_file(storage,fd,reqLen); 
+				
+				snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
 
-
+				// invio risposta al client
+				ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+				
+			}
+			break;
 
 			default:;
 		}
@@ -261,7 +257,7 @@ int main(int argc, char* argv[]){
 	}
 	
 	
-	if((storage = createFileStorage(argv[1],DELIM_CONFIG_FILE)) == NULL)
+	if((storage = create_fileStorage(argv[1],DELIM_CONFIG_FILE)) == NULL)
 		return 1;
 	
 

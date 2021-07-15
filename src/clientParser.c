@@ -17,6 +17,12 @@ void destroyClientParsing(parseT* parseResult){
 	free(parseResult);
 }
 
+void freeOp(void* op){
+	optT* opt = op;
+	free(opt->arg);
+	free(op);
+}
+
 
 int enqueueArg(queue* argQueue, char opt,char* arg){
 	//alloco spazio per memorizzare coppia opzione-argomento
@@ -53,7 +59,7 @@ parseT* parser(int argc, char* argv[]){
 
 	
 
-	queue* argQueue = createQueue(free,NULL);
+	queue* argQueue = createQueue(freeOp,NULL);
 	ec(argQueue,NULL,"creazione coda args",return NULL)
 	
 	parseResult->argList = argQueue;
