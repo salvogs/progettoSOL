@@ -17,7 +17,7 @@ queue* createQueue(void (*freeFun)(void*), int (*compare)(void*,void*)){
 		return NULL;
 	
 	q->ndata = 0;
-	q->freeFun = freeFun;
+	q->freeFun = freeFun ? freeFun : free;
 	q->compare = compare;
 	q->head = q->tail = NULL;
 
@@ -62,6 +62,8 @@ void* dequeue(queue* q){
 	if(newHead == NULL){
 		q->ndata--;
 		free(q->head);
+		q->head = NULL;
+		q->tail = NULL;
 		return elem;
 	}
 
@@ -87,6 +89,8 @@ int removeFromQueue(queue* q){
 	if(newHead == NULL){
 		q->ndata--;
 		free(q->head);
+		q->head = NULL;
+		q->tail = NULL;
 		return 0;
 	}
 
@@ -117,38 +121,20 @@ int findQueue(queue* q,void* elem){
 void destroyData(queue* q){
 	
 	data* tmp = q->head;
-
-	/*se quando e' stata creata la coda non e' stata
-	definita alcuna freeFun*/
-	if(q->freeFun == NULL){
-		while(isQueueEmpty(q) != 1){
-			q->ndata--;
-			q->head = q->head->next;
-
-			free(tmp);
-			tmp = q->head;
-		}
-	}else{
-		while(isQueueEmpty(q) != 1){
-			q->ndata--;
-			q->head = q->head->next;
-			if(q->freeFun)
-				q->freeFun(tmp->data);
-			
-			free(tmp);
-			tmp = q->head;
-		}
-
-
+	
+	while(!isQueueEmpty(q)){
+		q->ndata--;
+		q->head = q->head->next;
+		q->freeFun(tmp->data);
+		
+		free(tmp);
+		tmp = q->head;
 	}
-	
-	
-
-	
 }
 
-void destroyQueue(queue* q){
 
+void destroyQueue(queue* q){
+	
 	if(!isQueueEmpty(q))
 		destroyData(q);
 
