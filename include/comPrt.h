@@ -8,7 +8,7 @@
 	RICHIESTA: viene mandata per prima la lunghezza del messaggio che si sta inviando
 				tutte le richiesta hanno un campo da un Byte che indica l'operazione
 			openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
-			closeFile:	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+			closeFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 			readFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 			readNFile:	1Byte(operazione)4Byte(N file da leggere)
 			writeFile:	1Byte(operazione)8Byte(dimensione file)dimensione_fileByte(file vero e proprio)
@@ -24,14 +24,14 @@
 
 
 #define RESPONSE_SIZE 1
-
+#define MAX_FILESIZE_LEN 10
 
 // operazioni
 
 #define OPEN_FILE 1
 #define CLOSE_FILE 2
 #define WRITE_FILE 3
-
+#define REMOVE_FILE 4
 // flag openFile
 
 #define O_CREATE 1
@@ -42,7 +42,8 @@
 #define SUCCESS 0
 #define SERVER_ERROR 1
 #define FILE_EXISTS 2
-#define BAD_REQUEST 3
+#define FILE_NOT_EXISTS 3
+#define BAD_REQUEST 4
 // #define OP_REFUSED -1
 
 #define APPOST 0

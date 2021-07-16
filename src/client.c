@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "../include/clientParser.h"
 #include "../include/queue.h"
 #include "../include/api.h"
@@ -33,6 +35,12 @@ void printParseResult(parseT* parseResult){
 
 }
 
+
+int isRegularFile(char* pathname){
+	struct stat info;
+    ec_n(stat(pathname, &info),0,pathname,return 0)
+	return S_ISREG(info.st_mode);
+}
 
 int isPointDir(char *dir){
     if(strcmp(dir,".") && strcmp(dir,".."))
@@ -68,7 +76,7 @@ void recursiveVisit(char* pathname,long* n,int limited,char* dirname){
             if(file->d_type == DT_DIR){
                 //if(n != 0)
 					recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
-			}else{
+			}else if(file->d_type == DT_REG){
                 if(openFile(absoluteName,O_CREATE | O_LOCK) == 0){ //file creato sul server
 					//adesso bisogna inviare al server il contenuto del file
 					if(writeFile(absoluteName,dirname) == 0){
@@ -91,47 +99,108 @@ void recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 	return;
 
 }
-int w_handler(char* args,char* dirname){
+int writeHandler(char opt,char* args,char* dirname){
 
 	char* save;
 	char* path;
 	long n = 0;
 
-	if(!(path = strtok_r(args,",",&save))){
-		errno = EINVAL;
-		perror("w dirname");
-		return 1;
-	}
-	char* pathname = realpath(path,NULL);
-	if(!pathname){
-		free(path);
-		perror("realpath");
-		return 1;
-	}
-	
+	if(opt == 'w'){
 
-	char* nfile;
-	if((nfile = strtok_r(NULL,"n=",&save))){
-		if(isNumber(nfile,(long*)&n) != 0){
-			free(path);
+		if(!(path = strtok_r(args,",",&save))){
 			errno = EINVAL;
-			perror("n=");
+			perror("dirname");
 			return 1;
 		}
+		char* pathname = realpath(path,NULL);
+		if(!pathname){
+			free(path);
+			perror("realpath");
+			return 1;
+		}
+		
+
+		char* nfile;
+		if((nfile = strtok_r(NULL,"n=",&save))){
+			if(isNumber(nfile,(long*)&n) != 0){
+				free(path);
+				errno = EINVAL;
+				perror("n=");
+				return 1;
+			}
+		}
+		//free(path);
+
+		//printf("scrivo dir: %s n file = %d\n",pathname,n);
+		int limited = 0;
+		if(n > 0)
+			limited = 1;
+
+		recursiveVisit(pathname,&n,limited,dirname);
+		// openFile(args,O_CREATE | O_LOCK);
+		free(pathname);
+	}else{ // opt = W
+		char* pathname;
+		path = strtok_r(args,",",&save);
+
+		while(path){
+			pathname =  realpath(path,NULL);
+			if(!pathname){
+				free(path);
+				perror("realpath");
+				return 1;
+			}
+			//controllo che sia effettivamente un file regolare
+			if(!isRegularFile(pathname)){
+				free(pathname);
+				return 1;
+			}
+
+			if(openFile(pathname,O_CREATE | O_LOCK) == 0){ //file creato sul server
+					//adesso bisogna inviare al server il contenuto del file
+					if(writeFile(pathname,dirname) == 0){
+						//closefile
+					}
+			}
+			free(pathname);
+			path = strtok_r(NULL,",",&save);
+		}
+		// free(args);
 	}
-	free(path);
-
-	//printf("scrivo dir: %s n file = %d\n",pathname,n);
-	int limited = 0;
-	if(n > 0)
-		limited = 1;
-
-	recursiveVisit(pathname,&n,limited,dirname);
-   	// openFile(args,O_CREATE | O_LOCK);
-	free(pathname);
 
 	return 0;
 }
+
+int removeHandler(char* args){
+
+	char* save;
+	char* path;
+	char* pathname;
+
+	path = strtok_r(args,",",&save);
+
+	while(path){
+		pathname =  realpath(path,NULL);
+		if(!pathname){
+			free(path);
+			perror("realpath");
+			return 1;
+		}
+		
+		if(removeFile(pathname) == -1){
+			//sperror("removeFile");
+		}
+
+		free(pathname);
+
+		path = strtok_r(NULL,",",&save);
+	}
+		
+	return 0;
+}
+
+
+
 
 
 int main(int argc, char* argv[]){
@@ -185,18 +254,23 @@ int main(int argc, char* argv[]){
 					dirname = NULL;
 					//fprintf(stdout,"scrivo %s\n",op->arg);
 				}
-				w_handler(op->arg,dirname);
+				writeHandler(op->opt,op->arg,dirname);
 			}
 			break;
 
 			case 'W':{
-				nextOp = args->head->data;
-				if(nextOp && nextOp->opt == 'D'){
-					removeFromQueue(args); //rimuovo il -D
-					fprintf(stdout,"scrivo %s e rimpiazzo su %s\n",op->arg,nextOp->arg);
+				if(args->head){
+					nextOp = args->head->data;
+					if(nextOp && nextOp->opt == 'D'){
+						removeFromQueue(args); //rimuovo il -D
+						dirname = nextOp->arg;
+						//fprintf(stdout,"scrivo %s e rimpiazzo su %s\n",op->arg,dirname);
+					}
 				}else{
-					fprintf(stdout,"scrivo %s\n",op->arg);
+					dirname = NULL;
+					//fprintf(stdout,"scrivo %s\n",op->arg);
 				}
+				writeHandler(op->opt,op->arg,dirname);
 			}
 
 			break;
@@ -242,13 +316,14 @@ int main(int argc, char* argv[]){
 			break;
 
 			case 'c':
-				fprintf(stdout,"rimuovo %s\n",op->arg);
+				removeHandler(op->arg);
+				//fprintf(stdout,"rimuovo %s\n",op->arg);
 			break;
 
 			default:;
 		}
 
-
+		free(op->arg);
 		free(op);
 	}
 	

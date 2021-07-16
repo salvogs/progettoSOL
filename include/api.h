@@ -36,6 +36,9 @@
 			case FILE_EXISTS:\
 				fprintf(stdout,"%s : %s : FILE GIA' ESISTENTE\n",op,a);\
 			break;\
+			case FILE_NOT_EXISTS:\
+				fprintf(stdout,"%s : %s : FILE NON TROVATO\n",op,a);\
+			break;\
 			case SERVER_ERROR:\
 				fprintf(stdout,"%s : %s : ERRORE INTERNO SERVER\n",op,a);\
 			break;\

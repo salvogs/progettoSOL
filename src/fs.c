@@ -50,7 +50,7 @@ int open_file(fsT* storage, int fd, long pathLen){
 		if((readn(fd,req,pathLen+1)) == 0){
 			fprintf(stdout,"client %d disconnesso\n",fd);
 			free(req);
-			return -1;
+			return SERVER_ERROR;
 		}
 		
 
@@ -58,7 +58,7 @@ int open_file(fsT* storage, int fd, long pathLen){
 		if(!path){
 			perror("strndup");
 			free(req);
-			return -1;
+			return SERVER_ERROR;
 		}
 
 
@@ -94,8 +94,9 @@ int open_file(fsT* storage, int fd, long pathLen){
 			if(!(fPtr = malloc(sizeof(fT))))
 				return SERVER_ERROR;
 
-			fPtr->pathname = malloc(strlen(path)+1);
-			strncpy(fPtr->pathname,path,strlen(path)+1);
+			fPtr->pathname = path;
+			// malloc(strlen(path)+1);
+			// strncpy(fPtr->pathname,path,strlen(path)+1);
 	
 			fPtr->size = 0;
 			fPtr->content = NULL;
@@ -107,19 +108,19 @@ int open_file(fsT* storage, int fd, long pathLen){
 		}
 		
 		
-		return 0;
+		return SUCCESS;
 }
 
 
 int write_file(fsT* storage,int fd,int pathLen){
 	
-	char* req = calloc(pathLen+8,1);
+	char* req = calloc(pathLen+MAX_FILESIZE_LEN,1);
 	ec(req,NULL,"calloc",return -1)
 
 	//printf("pathlen: %d\n",pathLen);
 
 	//leggo pathname e dimensioneFile
-	if((readn(fd,req,pathLen+8)) == 0){
+	if((readn(fd,req,pathLen+MAX_FILESIZE_LEN)) == 0){
 			fprintf(stdout,"client %d disconnesso\n",fd);
 			free(req);
 			return -1;
@@ -130,22 +131,22 @@ int write_file(fsT* storage,int fd,int pathLen){
 	if(!path){
 		perror("strndup");
 		free(req);
-		return -1;
+		return SERVER_ERROR;
 	}
 		
 
 
 	//printf("%s\n",path);
-	char* fileSize = strndup(req+pathLen,sizeof(long));
+	char* fileSize = strndup(req+pathLen,MAX_FILESIZE_LEN);
 	if(!fileSize){
 		perror("strndup");
 		free(req);
 		free(path);
-		return -1;
+		return SERVER_ERROR;
 	}
-
+	
 	free(req);
-
+	// printf("%s\n",fileSize);
 
 	long fsize = 0;	
 
@@ -153,20 +154,20 @@ int write_file(fsT* storage,int fd,int pathLen){
 	if(isNumber(fileSize,&fsize) != 0){
 		free(fileSize);
 		free(path);
-		return -1;
+		return BAD_REQUEST;
 	}
-
+	// printf("%ld\n",fsize);
 	free(fileSize);
 
 	fT* fPtr = icl_hash_find(storage->ht,path);
 	if(!fPtr){
 		//file non ancora creato
 		free(path);
-		return -1;
+		return FILE_NOT_EXISTS;
 	}
 	free(path);
 
-	ec(fPtr->content = malloc(fsize),NULL,"malloc",return -1);
+	ec(fPtr->content = malloc(fsize),NULL,"malloc",return SERVER_ERROR);
 	
 	
 
@@ -175,6 +176,47 @@ int write_file(fsT* storage,int fd,int pathLen){
 			return -1;
 	}
 
-	return 0;
+	return SUCCESS;
 
+}
+
+
+
+
+
+int remove_file(fsT* storage, int fd, long pathLen){
+		
+		
+
+		char* req = calloc(pathLen,1);
+		ec(req,NULL,"calloc",return -1)
+
+		if((readn(fd,req,pathLen)) == 0){
+			fprintf(stdout,"client %d disconnesso\n",fd);
+			free(req);
+			return -1;
+		}
+		
+
+		char* path = strndup(req,pathLen);
+		if(!path){
+			perror("strndup");
+			free(req);
+			return SERVER_ERROR;
+		}		
+		free(req);
+
+		fT* fPtr = icl_hash_find(storage->ht,path);
+
+		
+		if(icl_hash_delete(storage->ht,path,NULL,NULL) == -1)
+			return FILE_NOT_EXISTS; 
+			
+		free(fPtr->content);
+		free(fPtr->pathname);
+
+		free(fPtr);
+
+		return SUCCESS;
+		
 }

@@ -34,4 +34,6 @@ int open_file(fsT* storage, int fd, long pathLen);
 
 int write_file(fsT* storage,int fd,int pathLen);
 
+int remove_file(fsT* storage, int fd, long pathLen);
+
 #endif

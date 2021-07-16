@@ -142,10 +142,10 @@ int masterFun(){
 
 void* workerFun(){
 	int ret,end = 0;
-
+	
 	char bufPipe[BUFPIPESIZE] = "";
 	
-	char reqBuf[BUFSIZE];
+	char reqBuf[BUFSIZE] = "";
 
 	char resBuf[RESPONSE_SIZE+1] = "";
 
@@ -153,7 +153,7 @@ void* workerFun(){
 		LOCK(&request_mux);
 		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
-		// fprintf(stdout,"sono il thread %ld\n", pthread_self());
+		fprintf(stdout,"sono il thread %ld\n", pthread_self());
 		// printQueueInt(requestQueue);
 
 		int fd = (long)dequeue(requestQueue);
@@ -166,13 +166,14 @@ void* workerFun(){
 			exit(EXIT_FAILURE);
 		
 		
-		//memset(buf,'\0',BUFSIZE);
+		//memset(reqBuf,'\0',BUFSIZE);
 		
 		if((readn(fd,reqBuf,9)) == 0){
 			fprintf(stdout,"client %d disconnesso\n",fd);
 			close(fd);
 			continue;
 		}
+		
 		
 
 		int op = reqBuf[0] - '0';
@@ -195,10 +196,12 @@ void* workerFun(){
 					perror("open file");
 				}
 				
-				snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+				if(ret != -1){
 
-				// invio risposta al client
-				ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+				}
 
 				//printf("dopo di openFile %d\n",storage->fileNum);
 			
@@ -213,10 +216,30 @@ void* workerFun(){
 				
 				ret = write_file(storage,fd,reqLen); 
 				
-				snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+				if(ret != -1){			
+					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
 
-				// invio risposta al client
-				ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+				}
+				
+			}
+			break;
+			
+			case REMOVE_FILE:{
+				reqLen = atoi(reqBuf+1);
+				//isNumber(buf+1,&reqLen) != 0) // reqLen = lunghezza pathname
+					
+				
+				// ret = write_file(storage,fd,reqLen); 
+				ret = remove_file(storage,fd,reqLen);
+				
+				if(ret != -1){			
+					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+				}
 				
 			}
 			break;
