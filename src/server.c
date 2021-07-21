@@ -145,9 +145,10 @@ void* workerFun(){
 	
 	char bufPipe[BUFPIPESIZE] = "";
 	
-	char reqBuf[BUFSIZE] = "";
+	char reqBuf[OP_REQUEST_SIZE] = "";
 
 	char resBuf[RESPONSE_SIZE+1] = "";
+
 
 	while(!end){
 		LOCK(&request_mux);
@@ -162,17 +163,25 @@ void* workerFun(){
 		UNLOCK(&request_mux);
 
 
-		if(fd == 1)
-			exit(EXIT_FAILURE);
+		// if(fd == 1)
+		// 	exit(EXIT_FAILURE);
 		
 		
 		//memset(reqBuf,'\0',BUFSIZE);
 		
-		if((readn(fd,reqBuf,9)) == 0){
-			fprintf(stdout,"client %d disconnesso\n",fd);
-			close(fd);
+		//leggo operazione
+		
+		ret = readn(fd,reqBuf,OP_REQUEST_SIZE);
+		if(ret == 0){
+			clientExit(fd);
 			continue;
 		}
+		if(ret == -1){
+			perror("op read");
+			continue;
+		}
+		
+	
 		
 		
 
@@ -180,24 +189,22 @@ void* workerFun(){
 		// printf("operazione: %d\n dim: %s\n",op,buf+1);
 		// printf("operazione: %d\n",op);
 		
-		long reqLen;
+		//long reqLen;
 		
 
 		switch(op){
 			case OPEN_FILE:{
-				// openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
+				// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
 				// isNumber(buf+1,&reqLen); // reqLen = lunghezza pathname
-				reqLen = atoi(reqBuf+1);
+				
 			
 				//printf("prima di openFile %d\n",storage->fileNum);
-				errno = 0;
-				ret = open_file(storage,fd,reqLen);
-				if(errno){
-					perror("open file");
-				}
-				
+			
+				ret = open_file(storage,fd);				
 				if(ret != -1){
-
+					if(ret == SERVER_ERROR){
+						perror("open file");
+					}
 					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
 					// invio risposta al client
 					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
@@ -210,13 +217,12 @@ void* workerFun(){
 			break;
 			
 			case WRITE_FILE:{
-				reqLen = atoi(reqBuf+1);
-				//isNumber(buf+1,&reqLen) != 0) // reqLen = lunghezza pathname
-					
+				ret = write_file(storage,fd); 
 				
-				ret = write_file(storage,fd,reqLen); 
-				
-				if(ret != -1){			
+				if(ret != -1){
+					if(ret == SERVER_ERROR){
+						perror("write file");
+					}			
 					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
@@ -225,16 +231,32 @@ void* workerFun(){
 				
 			}
 			break;
+
+			case READ_FILE:{
+				ret = read_file(storage,fd); 
+				
+				if(ret != -1 && ret != SUCCESS){		
+					if(ret == SERVER_ERROR){
+						perror("read file");
+					}	
+					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+
+					// invio risposta(errore) al client
+					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+				}
+				
+			}
+			break;
+
 			
 			case REMOVE_FILE:{
-				reqLen = atoi(reqBuf+1);
-				//isNumber(buf+1,&reqLen) != 0) // reqLen = lunghezza pathname
-					
-				
-				// ret = write_file(storage,fd,reqLen); 
-				ret = remove_file(storage,fd,reqLen);
+				ret = remove_file(storage,fd);
 				
 				if(ret != -1){			
+					if(ret == SERVER_ERROR){
+						perror("remove file");
+					}
+
 					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
