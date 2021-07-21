@@ -33,6 +33,9 @@
 			case SUCCESS:\
 				fprintf(stdout,"%s : %s : SUCCESSO\n",op,a);\
 			break;\
+			case EMPTY_FILE:\
+				fprintf(stdout,"%s : %s : SUCCESSO(FILE VUOTO)\n",op,a);\
+			break;\
 			case FILE_EXISTS:\
 				fprintf(stdout,"%s : %s : FILE GIA' ESISTENTE\n",op,a);\
 			break;\

@@ -21,7 +21,13 @@
         e;           \
     }
 
+#define chk_null(s,r) \
+    if((s) == NULL) \
+    {               \
+        return r;   \
+    }       
 
+    
 // ritorna
 //   0: ok
 //   1: non e' un numero

@@ -22,7 +22,7 @@
 		 ed eventualmente il numero di file espulsi(quindi su cui fare altre read)
 */
 
-
+#define OP_REQUEST_SIZE 1
 #define RESPONSE_SIZE 1
 #define MAX_FILESIZE_LEN 10
 
@@ -31,7 +31,8 @@
 #define OPEN_FILE 1
 #define CLOSE_FILE 2
 #define WRITE_FILE 3
-#define REMOVE_FILE 4
+#define READ_FILE 4
+#define REMOVE_FILE 5
 // flag openFile
 
 #define O_CREATE 1
@@ -43,7 +44,9 @@
 #define SERVER_ERROR 1
 #define FILE_EXISTS 2
 #define FILE_NOT_EXISTS 3
-#define BAD_REQUEST 4
+#define EMPTY_FILE 4
+#define BAD_REQUEST 5
+
 // #define OP_REFUSED -1
 
 #define APPOST 0

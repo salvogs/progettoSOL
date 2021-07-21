@@ -5,11 +5,18 @@
 
 //rb = response buffer r = intResponse
 #define RESPONSE_FROM_SERVER(rb,r) \
-	if(readn(FD_CLIENT,rb,1) == -1){\
-		perror("readn");\
+	int ret = readn(FD_CLIENT,rb,1);\
+	if(ret == -1){\
+		free(rb);\
+		return -1;\
+	}\
+	if(ret == 0){\
+		free(rb);\
+		errno = ECONNRESET;\
 		return -1;\
 	}\
 	r = rb[0] - '0';
+	//r = rb[0] == '\0' ? rb[0] : rb[0] - '0'; 
 
 
 char *realpath(const char *path, char *resolved_path);
@@ -75,24 +82,24 @@ int closeConnection(const char* sockname){
 
 int openFile(const char* pathname, int flags){
 
-	char* path = realpath(pathname,NULL);
-	ec(path,NULL,"pathname",return -1);
+	// char* path = realpath(pathname,NULL);
+	// ec(path,NULL,"pathname",return -1);
 
-	// openFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
+	// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
 
 
 
-	int reqLen = sizeof(char) + sizeof(long) + strlen(path) + sizeof(char) +1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + sizeof(char) +1; //+1 finale percheè snprintf include anche il \0
 
 	char* req = calloc(reqLen,1);
-	ec(req,NULL,"calloc",return -1);
+	chk_null(req,-1)
 
-	snprintf(req,reqLen,"%d%8ld%s%d",OPEN_FILE,strlen(path),path,flags);
+	snprintf(req,reqLen,"%d%4d%s%d",OPEN_FILE,(int)strlen(pathname),pathname,flags);
 	//printf("reqLen: %d\n req: %s\n",reqLen,req);
 	
 
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		perror("writen");
+		//perror("writen");
 		free(req);
 		return -1;
 	}
@@ -100,16 +107,17 @@ int openFile(const char* pathname, int flags){
 	free(req);
 	
 	char* resBuf = calloc(1,1);
-	ec(resBuf,NULL,"calloc",return -1);
+	chk_null(resBuf,-1)
+	
 	long response;
 
 	RESPONSE_FROM_SERVER(resBuf,response)
 	
 	free(resBuf);
 	
-	PRINTER("OPEN FILE",path,response)
+	PRINTER("OPEN FILE",pathname,response)
 
-	free(path);
+	//free(path);
 
 	if(response != SUCCESS){
 		return -1;
@@ -122,24 +130,25 @@ int openFile(const char* pathname, int flags){
 
 int closeFile(const char* pathname){
 
-	char* path = realpath(pathname,NULL);
-	ec(path,NULL,"pathname",return -1);
+	// char* path = realpath(pathname,NULL);
+	// ec(path,NULL,"pathname",return -1);
 
-	// closeFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+	// closeFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 
 
-	int reqLen = sizeof(char) + sizeof(long) + strlen(path)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
 
 	char* req = calloc(reqLen,1);
-	ec(req,NULL,"calloc",return -1);
+	chk_null(req,-1)
 
-	snprintf(req,reqLen,"%d%8ld%s",CLOSE_FILE,strlen(path),path);
+
+	snprintf(req,reqLen,"%d%4d%s",CLOSE_FILE,(int)strlen(pathname),pathname);
 	//printf("reqLen: %d\n req: %s\n",reqLen,req);
 	
 
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		perror("writen");
+		//perror("writen");
 		free(req);
 		return -1;
 	}
@@ -147,16 +156,17 @@ int closeFile(const char* pathname){
 	free(req);
 	
 	char* resBuf = calloc(1,1);
-	ec(resBuf,NULL,"calloc",return -1);
+	chk_null(resBuf,-1)
+
 	long response;
 
 	RESPONSE_FROM_SERVER(resBuf,response)
 	
 	free(resBuf);
 	
-	PRINTER("CLOSE FILE",path,response)
+	PRINTER("CLOSE FILE",pathname,response)
 
-	free(path);
+	// free(path);
 
 	if(response != SUCCESS){
 		return -1;
@@ -173,46 +183,59 @@ int closeFile(const char* pathname){
 int writeFile(const char* pathname, const char* dirname){
 	
 	struct stat info;
-    ec_n(stat(pathname, &info),0,pathname,return -1)
+	if(stat(pathname, &info) != 0)
+		return -1;
+	
+   
 
 	long fsize = info.st_size;
 
+	if(fsize == 0){
+		//non faccio nemmeno richiesta al server
+		PRINTER("WRITE FILE",pathname,EMPTY_FILE)
+
+		if(PRINTS)
+			fprintf(stdout,"Scritti: %ld bytes\n",fsize);
+
+		return EMPTY_FILE;
+	}
 	//printf("info sizeeee %ld\n",fsize);
 
-	FILE* fptr = fopen(pathname,"r");
-	ec(fptr,NULL,"fopen",return -1)
+	FILE* fPtr = fopen(pathname,"r");
+	chk_null(fPtr,-1)
+	
 
 
 	//leggo il file su un buffer
 
 	void* buf = malloc(fsize);
-	ec(buf,NULL,"malloc",return -1);
+	chk_null(buf,-1)
+	
 
-	if(fread(buf,1,fsize,fptr) != fsize){
-		fprintf(stderr,"errore lettura file\n");
-		fclose(fptr);
+	if(fread(buf,1,fsize,fPtr) != fsize){
+		//fprintf(stderr,"errore lettura file\n");
+		fclose(fPtr);
 		free(buf);
 		return -1;
 	}
-	fclose(fptr);
-	// fseek(fptr, 0L, SEEK_END);
-	// fsize = ftell(fptr);
-
+	fclose(fPtr);
+	
 	
 
 	// writeFile:1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)MAX_FILESIZE_LENByte(dimensione file)dimensione_fileByte(file vero e proprio)
 
-	int reqLen = sizeof(char) + sizeof(long) + strlen(pathname) + MAX_FILESIZE_LEN + fsize +1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + MAX_FILESIZE_LEN + fsize +1; //+1 finale percheè snprintf include anche il \0
 
 	char* req = calloc(reqLen,1);
-	ec(req,NULL,"calloc",return -1);
+	chk_null(req,-1)
+	
 
-	snprintf(req,reqLen,"%d%8ld%s%010ld",WRITE_FILE,strlen(pathname),pathname,fsize); // fsize 10 char max
+	snprintf(req,reqLen,"%d%4d%s%010ld",WRITE_FILE,(int)strlen(pathname),pathname,fsize); // fsize 10 char max
 	
 	memcpy((req + strlen(req)),buf,fsize);
 
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		perror("writen");
+		//perror("writen");
 		free(req);
 		return -1;
 	}
@@ -223,7 +246,8 @@ int writeFile(const char* pathname, const char* dirname){
 	free(buf);
 	
 	char* resBuf = calloc(1,1);
-	ec(resBuf,NULL,"calloc",return -1);
+	chk_null(resBuf,-1)
+	
 
 	long response;
 
@@ -233,7 +257,8 @@ int writeFile(const char* pathname, const char* dirname){
 
 	PRINTER("WRITE FILE",pathname,response)
 
-	fprintf(stdout,"Scritti: %ld bytes\n",fsize);
+	if(PRINTS)
+		fprintf(stdout,"Scritti: %ld bytes\n",fsize);
 
 
 
@@ -246,24 +271,24 @@ int writeFile(const char* pathname, const char* dirname){
 
 
 int removeFile(const char* pathname){
-	char* path = realpath(pathname,NULL);
-	ec(path,NULL,"pathname",return -1);
+	// char* path = realpath(pathname,NULL);
+	// ec(path,NULL,"pathname",return -1);
 
-	// removeFile: 	1Byte(operazione)8Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+	// removeFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 
 
-	int reqLen = sizeof(char) + sizeof(long) + strlen(path)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
 
 	char* req = calloc(reqLen,1);
-	ec(req,NULL,"calloc",return -1);
+	chk_null(req,-1)
 
-	snprintf(req,reqLen,"%d%8ld%s",REMOVE_FILE,strlen(path),path);
+	snprintf(req,reqLen,"%d%4d%s",REMOVE_FILE,(int)strlen(pathname),pathname);
 	//printf("reqLen: %d\n req: %s\n",reqLen,req);
 	
 
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		perror("writen");
+		//perror("writen");
 		free(req);
 		return -1;
 	}
@@ -271,16 +296,17 @@ int removeFile(const char* pathname){
 	free(req);
 	
 	char* resBuf = calloc(1,1);
-	ec(resBuf,NULL,"calloc",return -1);
+	chk_null(resBuf,-1)
+	
 	long response;
 
 	RESPONSE_FROM_SERVER(resBuf,response)
 	
 	free(resBuf);
 	
-	PRINTER("REMOVE FILE",path,response)
+	PRINTER("REMOVE FILE",pathname,response)
 
-	free(path);
+	//free(path);
 
 	if(response != SUCCESS){
 		return -1;
@@ -289,3 +315,131 @@ int removeFile(const char* pathname){
 	return 0;
 	
 }
+
+
+
+int readFile(const char* pathname, void** buf, size_t* size){
+	// char* path = realpath(pathname,NULL);
+	// ec(path,NULL,"pathname",return -1);
+
+	// readFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+
+
+
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen,1);
+	chk_null(req,-1)
+
+
+	snprintf(req,reqLen,"%d%4d%s",READ_FILE,(int)strlen(pathname),pathname);
+	//printf("reqLen: %d\n req: %s\n",reqLen,req);
+	
+
+	if(writen(FD_CLIENT,req,reqLen-1) == -1){
+		//perror("writen");
+		free(req);
+		return -1;
+	}
+
+	free(req);
+	
+	
+	char* resBuf = calloc(1,1);
+	chk_null(resBuf,-1)
+
+	long response;
+
+	RESPONSE_FROM_SERVER(resBuf,response)
+
+	free(resBuf);
+	
+	if(response != SUCCESS && response != EMPTY_FILE){
+		PRINTER("READ FILE",pathname,response)
+		return -1;
+	}
+
+	
+	long fileSize;
+	void* content;
+
+	if(response == SUCCESS){
+
+		// mi aspetto: size del file letto, file letto
+
+		//prima read di 10byte per size
+		
+		char* sizeBuf = calloc(MAX_FILESIZE_LEN+1,1);
+		chk_null(sizeBuf,-1)
+		
+		
+		int ret = 0;
+
+		ret = readn(FD_CLIENT,sizeBuf,MAX_FILESIZE_LEN);
+
+		if(ret == 0){
+			errno = ECONNRESET;
+			free(sizeBuf);
+			return -1;
+		}
+		if(ret == -1){
+			free(sizeBuf);
+			return -1;
+		}
+		
+		
+		fileSize = atol(sizeBuf);
+
+		free(sizeBuf);
+		// alloco spazio per leggere il file
+
+		content = malloc(fileSize);
+		chk_null(content,-1)
+
+		ret = readn(FD_CLIENT,content,fileSize);
+
+		if(ret == 0){
+			errno = ECONNRESET;
+			free(sizeBuf);
+			return -1;
+		}
+		if(ret == -1){
+			free(sizeBuf);
+			return -1;
+		}
+
+
+
+
+
+
+	}else{ //file empty
+		fileSize = 0;
+		content = NULL;
+	}
+
+
+	*size = fileSize;
+	*buf = content;
+
+	PRINTER("READ FILE",pathname,response)
+
+	if(PRINTS)
+		fprintf(stdout,"Letti: %ld bytes\n",*size);
+	
+	
+	return 0;
+
+
+}
+
+
+// int readNFiles(int N, const char* dirname){
+// 	char* dir = realpath(dirname,NULL);
+// 	ec(dir,NULL,"realpath",return -1)
+
+// 	// readNFile:	1Byte(operazione)4Byte(N file da leggere)
+
+
+// 	int reqLen = 
+// }

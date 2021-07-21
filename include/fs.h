@@ -1,6 +1,7 @@
 #ifndef FS_H
 #define FS_H
 
+#include <unistd.h>
 #include "../include/comPrt.h"
 #include "../include/icl_hash.h"
 //struct che mantiene lo stato del file storage server
@@ -28,12 +29,19 @@ typedef struct{
 
 
 
+
+
+
+void clientExit(int fd);
+
 fsT* create_fileStorage(char* configPath, char* delim);
 
-int open_file(fsT* storage, int fd, long pathLen);
+int open_file(fsT* storage, int fd);
 
-int write_file(fsT* storage,int fd,int pathLen);
+int write_file(fsT* storage,int fd);
 
-int remove_file(fsT* storage, int fd, long pathLen);
+int read_file(fsT* storage,int fd);
+
+int remove_file(fsT* storage, int fd);
 
 #endif
