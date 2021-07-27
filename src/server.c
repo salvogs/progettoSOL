@@ -32,8 +32,6 @@
 
 
 
-
-#define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
 #define BUFSIZE 2048
 #define BUFPIPESIZE 4
 #define DELIM_CONFIG_FILE ":"
@@ -266,9 +264,25 @@ void* workerFun(){
 			}
 			break;
 
+		
+		case READ_N_FILE:{
+				ret = read_n_file(storage,fd); 
+				
+				if(ret != -1){
+					if(ret == SERVER_ERROR){
+						perror("read n file");
+					}			
+					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+				}
+				
+			}
+			break;
+
 			default:;
 		}
-
 
 		// upperString(buf,strlen(buf));
 		//write(fd,buf,strlen(buf));

@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "../include/comPrt.h"
 #include "../include/icl_hash.h"
+#include "../include/queue.h"
 //struct che mantiene lo stato del file storage server
 
 typedef struct{
@@ -15,8 +16,10 @@ typedef struct{
 	char* logPath;
 
 	icl_hash_t* ht;
-	long capacity;
-	long fileNum;
+	long currCapacity;
+	long currFileNum;
+
+	queue* filesQueue;
 }fsT;
 
 
@@ -42,6 +45,15 @@ int write_file(fsT* storage,int fd);
 
 int read_file(fsT* storage,int fd);
 
+int read_n_file(fsT* storage,int fd);
+
 int remove_file(fsT* storage, int fd);
+
+void freeFile(void* fptr);
+
+int cmpFile(void* f1, void* f2);
+
+
+
 
 #endif

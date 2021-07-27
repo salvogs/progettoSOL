@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include "../include/comPrt.h"
-
+//#include "../include/client.h"
 #define UNIX_PATH_MAX 108
 
 
@@ -54,7 +54,6 @@
 
 #define PRINT(a)\
 	if(PRINTS)	(a);
-
 
 
 
@@ -190,6 +189,9 @@ stato locked da parte di un processo client diverso da chi effettua la removeFil
 int removeFile(const char* pathname);
 
 
+int getFile(size_t* size,void** content, char** pathname);
+
+// int getEjectedFiles(int n,const char* dirname,size_t* bytes);
 
 
 #endif

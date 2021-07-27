@@ -39,9 +39,11 @@ fsT* create_fileStorage(char* configPath, char* delim){
 	// alloco hash table
 	ec(storage->ht = icl_hash_create(storage->maxFileNum,NULL,NULL), NULL,"hash create",return NULL)
 	
-	storage->capacity = 0;
-	storage->fileNum = 0;
+	storage->currCapacity = 0;
+	storage->currFileNum = 0;
+	ec(storage->filesQueue = createQueue(freeFile,cmpFile),NULL,"create queue",return NULL)
 	
+
 	return storage;	
 }
 
@@ -121,8 +123,8 @@ int open_file(fsT* storage, int fd){
 			return FILE_NOT_EXISTS;
 		}
 		// LOCK
-		if(storage->fileNum < storage->maxFileNum)
-			storage->fileNum++;
+		if(storage->currFileNum < storage->maxFileNum)
+			storage->currFileNum++;
 		else{}
 
 		if(!(fPtr = malloc(sizeof(fT))))
@@ -136,9 +138,13 @@ int open_file(fsT* storage, int fd){
 		fPtr->content = NULL;
 		
 
-		if(!icl_hash_insert(storage->ht,path,fPtr))
+		if(!(icl_hash_insert(storage->ht,path,fPtr)))
 			return SERVER_ERROR;
 
+		// inserisco in coda per politica rimpiazzamento
+		if(enqueue(storage->filesQueue,fPtr) != 0)
+			return SERVER_ERROR;
+		storage->currCapacity++;
 	}
 	
 	
@@ -150,8 +156,7 @@ int write_file(fsT* storage,int fd){
 
 	// leggo lunghezza pathname
 	char* _pathLen = calloc(sizeof(int)+1,1);
-	if(!_pathLen)
-		return SERVER_ERROR;
+	chk_null(_pathLen,SERVER_ERROR)
 	
 	
 	int ret = 0;
@@ -232,25 +237,33 @@ int write_file(fsT* storage,int fd){
 	}
 	free(path);
 
-	fPtr->content = malloc(fsize);
-	if(!fPtr->content)
-		return SERVER_ERROR;
-	
-	
+	void* content = (void*) malloc(fsize);
+	chk_null(content,SERVER_ERROR)
 
-	ret = readn(fd,fPtr->content,fsize);
+	//leggo contenuto file
+	ret = readn(fd,content,fsize);
+
 	if(ret == 0){
-		clientExit(fd);
-		free(fPtr->content);
+		errno = ECONNRESET;
+		free(content);
 		return -1;
 	}
 	if(ret == -1){
-		free(fPtr->content);
+		free(content);
 		return SERVER_ERROR;
 	}
 
+
+	fPtr->content = (void*) malloc(fsize);
+	if(!fPtr->content)
+		return SERVER_ERROR;
+
+	memcpy(fPtr->content,content,fsize);
+
 	fPtr->size = fsize;
 
+	free(content);
+	// printf("nnnn: %p\n",(fPtr->content));
 	return SUCCESS;
 
 }
@@ -259,10 +272,8 @@ int write_file(fsT* storage,int fd){
 int read_file(fsT* storage,int fd){
 
 	// leggo lunghezza pathname
-	char* _pathLen = calloc(sizeof(int),1);
-	if(!_pathLen)
-		return SERVER_ERROR;
-	
+	char* _pathLen = calloc(sizeof(int)+1,1);
+	chk_null(_pathLen,SERVER_ERROR);
 
 
 	int ret = 0;
@@ -323,7 +334,7 @@ int read_file(fsT* storage,int fd){
 	}
 
 	free(path);
-
+	
 	// mando SUCCESS + size + file
 	long resLen = sizeof(char) + MAX_FILESIZE_LEN + fPtr->size +1;
 	char* res = calloc(resLen,1);
@@ -346,6 +357,76 @@ int read_file(fsT* storage,int fd){
 
 }
 
+int read_n_file(fsT* storage,int fd){
+
+	// leggo numero file da leggere
+	char* buf = calloc(sizeof(int)+1,1);
+	chk_null(buf,SERVER_ERROR)
+		
+	int ret = 0;
+
+	ret = readn(fd,buf,sizeof(int));
+	if(ret == 0){
+		clientExit(fd);
+		free(buf);
+		return -1;
+	}
+	if(ret == -1){
+		free(buf);
+		return SERVER_ERROR;
+	}
+
+	
+	
+	int n = atoi(buf);
+
+	free(buf);
+
+	if(n <= 0 || n >= storage->currFileNum)
+		n = storage->currFileNum;
+
+	data* curr = storage->filesQueue->head;
+	fT* fPtr;
+	
+
+	while(n && curr){
+		
+		
+		fPtr = (fT*)(curr->data);
+		
+		if(fPtr->size == 0){ //file vuoto
+			curr = curr->next;
+			continue;
+		}
+
+
+		long resLen = sizeof(char) + sizeof(int) + strlen(fPtr->pathname) + MAX_FILESIZE_LEN + fPtr->size +1;
+		
+		char* res = calloc(resLen,1);
+		chk_null(res,SERVER_ERROR);
+		
+
+		snprintf(res,resLen,"%d%4d%s%010ld",FILE_LIST,(int)strlen(fPtr->pathname),fPtr->pathname,fPtr->size);
+		memcpy((res + strlen(res)),fPtr->content,fPtr->size);
+	
+		if(writen(fd,res,resLen-1) == -1){
+			perror("writen");
+			free(res);
+			return -1;
+		}
+
+		curr = curr->next;
+			
+
+		
+
+		n--;
+	}
+
+
+	return END_FILE;
+
+}
 
 
 
@@ -407,16 +488,54 @@ int remove_file(fsT* storage, int fd){
 	free(req);
 
 	fT* fPtr = icl_hash_find(storage->ht,path);
+	chk_null(fPtr,FILE_NOT_EXISTS);
+	// rimuovo anche dalla coda di rimpiazzamento
+	if(removeFromQueue(storage->filesQueue,fPtr) != 0)
+		return FILE_NOT_EXISTS; 
+
+
+	if(icl_hash_delete(storage->ht,path,free,freeFile) == -1)
+		return FILE_NOT_EXISTS; 
+	
+	free(path);
 
 	
-	if(icl_hash_delete(storage->ht,path,NULL,NULL) == -1)
-		return FILE_NOT_EXISTS; 
-		
-	free(fPtr->content);
-	free(fPtr->pathname);
 
-	free(fPtr);
+	storage->currFileNum--;
+	
+	// 
+	// data* qfPtr;
+	// if((qfPtr = findQueue(storage->filesQueue,fPtr)) == NULL)
+	// 	return FILE_NOT_EXISTS; 
+
+	// if(removeFromQueue(storage->filesQueue,qfPtr) != 0)
+	// 	return FILE_NOT_EXISTS;
+
+	//free(fPtr->content);
+	//free(fPtr->pathname);
+
+	//free(fPtr);
 
 	return SUCCESS;
 		
+}
+
+
+
+
+
+
+
+void freeFile(void* fptr){
+	fT* fPtr = fptr;
+	if(fPtr){
+		free(fPtr->content);
+		//free(fPtr->pathname);
+		free(fPtr);
+	}
+	return;
+}
+
+int cmpFile(void* f1, void* f2){
+	return (strncmp(((fT*)f1)->pathname, ((fT *)f2)->pathname, UNIX_PATH_MAX) == 0) ? 1 : 0;
 }

@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "../include/clientParser.h"
+#include "../include/client.h"
 #include "../include/queue.h"
 #include "../include/api.h"
 #include "../include/utils.h"
@@ -81,7 +82,7 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
         if(isPointDir(file->d_name) == 0){ //non è una point-dir
             if(file->d_type == DT_DIR){
                 //if(n != 0)
-				int ret = recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
+				recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
 				if(errno){
 					errno = 0;
 					return 1;
@@ -92,7 +93,8 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
                 if(openFile(absoluteName,O_CREATE | O_LOCK) == 0){ //file creato sul server
 					//adesso bisogna inviare al server il contenuto del file
 					if(writeFile(absoluteName,dirname) == 0){
-						(*n)--;
+						if(limited)
+							(*n)--;
 					}else if(errno){
 						closedir(d);
 						perror("writeFile");
@@ -115,14 +117,14 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 	return 0;
 
 }
-int writeHandler(char opt,char* args,char* dirname){
+int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 	char* save;
 	char* path;
-	long n = 0;
 
+	
 	if(opt == 'w'){
-
+		long n = 0;
 		if(!(path = strtok_r(args,",",&save))){
 			errno = EINVAL;
 			perror("dirname");
@@ -161,9 +163,11 @@ int writeHandler(char opt,char* args,char* dirname){
 		int ret = recursiveVisit(pathname,&n,limited,dirname);
 		free(pathname);
 
+		nanosleep(reqTime,NULL);
 		if(ret == 1){
 			return 1;
 		}
+		
 		// openFile(args,O_CREATE | O_LOCK);
 	}else{ // opt = W
 		char* pathname;
@@ -201,6 +205,7 @@ int writeHandler(char opt,char* args,char* dirname){
 			
 			free(pathname);
 			path = strtok_r(NULL,",",&save);
+			nanosleep(reqTime,NULL);
 		}
 		// free(args);
 	}
@@ -209,64 +214,118 @@ int writeHandler(char opt,char* args,char* dirname){
 }
 
 
-int writeOnDisk(char* dirname,char* path, void* buf, size_t size){
-	char* newPath = calloc(strlen(dirname) + strlen(path),1);
+int writeOnDisk(const char* dirname,const char* path, void* buf, size_t size){
+
+	int newLen = strlen(dirname) + strlen(path)+1; // \0  
+	char* newPath = calloc(newLen,1);
 	ec(newPath,NULL,"calloc",return 1);
 
-	//mkdir(newPath,S_IRWXU);
-	FILE* fPtr = fopen("lib/sugo.txt","w+");
+	strncpy(newPath,dirname,newLen-1);
+    // strncat(newPath,"/",newLen-1);
+    strncat(newPath,path,newLen-1);
 
+	char* tmp = strndup(newPath,newLen);
+	chk_null(tmp,1);
+
+	for(int i = newLen-1;i >= 0;i--){
+		if(tmp[i] == '/'){
+			tmp[i] = '\0';
+			i = -1;
+		}
+	}
+
+	char* save = NULL,*token;
+	
+	char initialDir[UNIX_PATH_MAX];
+	getcwd(initialDir,UNIX_PATH_MAX);
+	
+	token = strtok_r(tmp,"/",&save);
+
+	while(token){
+		if(mkdir(token,S_IRWXU) != 0 && errno != EEXIST){
+			free(newPath);
+			free(tmp);
+			return 1;
+		}
+		chdir(token);
+		token = strtok_r(NULL,"/",&save);
+	}
+	free(tmp);
+
+	chdir(initialDir);
+
+	FILE* fPtr = fopen(newPath,"w+");
+	free(newPath);
 	fwrite(buf,1,size,fPtr);
 
+	fclose(fPtr);
 	return 0;
 }
 
 
 
-int readHandler(char opt,char* args,char* dirname){
+int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 	char* save;
-	char* path;
-	
 
-
-	//char* pathname;
-	path = strtok_r(args,",",&save);
-
-	while(path){
-		// pathname =  realpath(path,NULL);
-		// if(!pathname){
-		// 	free(path);
-		// 	perror("realpath");
-		// 	return 1;
-		// }
-		// //controllo che sia effettivamente un file regolare
-		// if(!isRegularFile(pathname)){
-		// 	free(pathname);
-		// 	return 1;
-		// }
-		// openFile senza flags
-		if(openFile(path,0) == 0){ //file creato sul server
-				//adesso bisogna leggere dal server il file
-				void* buf;
-				size_t size;
-				if(readFile(path,&buf,&size) == 0){
-					if(dirname){
-						//writeOnDisk(dirname,path,buf,size);
-					}
-
-				}else if(errno){
-						perror("readFile");
-						return 1;
-				} 
-				
-		}else if(errno){
-			perror("openFile");
-			return 1;
-		} 
+	if(opt == 'r'){
 		
-		//free(pathname);
-		path = strtok_r(NULL,",",&save);
+		char* path;
+		path = strtok_r(args,",",&save);
+
+		while(path){
+			// openFile senza flags
+			if(openFile(path,0) == 0){ //file creato sul server
+					//adesso bisogna leggere dal server il file
+					void* buf;
+					size_t size;
+					if(readFile(path,&buf,&size) == 0){
+						if(dirname){
+							writeOnDisk(dirname,path,buf,size);
+						}
+						if(buf)
+							free(buf);
+
+					}else if(errno){
+							perror("readFile");
+							return 1;
+					} 
+					
+			}else if(errno){
+				perror("openFile");
+				return 1;
+			} 
+			
+			//free(pathname);
+			path = strtok_r(NULL,",",&save);
+			nanosleep(reqTime,NULL);
+		}
+	}else{ // opt = R
+		char* nfile;
+		long n = 0;
+	
+		if(strlen(args) > 0){
+			if((nfile = strtok_r(args,"n=",&save))){
+				if(isNumber(nfile,(long*)&n) != 0){
+					errno = EINVAL;
+					perror("n=");
+					return 1;
+				}
+			}
+		}
+		
+	
+		// if(dirname){
+		// 	dir = realpath(dirname,NULL);
+		// 	if(!dir){
+		// 		free(dir);
+		// 		return 1;
+		// 	}
+		// }
+		
+		readNFiles(n,dirname);
+		//free(dirname);
+		nanosleep(reqTime,NULL);
 	}
 
 	return 0;
@@ -276,7 +335,7 @@ int readHandler(char opt,char* args,char* dirname){
 
 
 
-int removeHandler(char* args){
+int removeHandler(char* args,struct timespec* reqTime){
 
 	char* save;
 	char* path;
@@ -303,6 +362,7 @@ int removeHandler(char* args){
 		//free(path);
 
 		path = strtok_r(NULL,",",&save);
+		nanosleep(reqTime,NULL);
 	}
 		
 	return 0;
@@ -311,27 +371,27 @@ int removeHandler(char* args){
 
 
 
-
 int main(int argc, char* argv[]){
 
 	parseT* parseResult = parser(argc,argv);
-
-	if(!parseResult){
-		if(errno)
-			perror("command parsing");
-
-		return 1;
-	}
+	ec(parseResult,NULL,"command parsing",return 1)
+	
 	if(parseResult->PRINT_ENABLE == 1)
 		PRINTS = 1;
 
 	//printParseResult(parseResult);
 
+	if(parseResult->argList->ndata == 0){
+		destroyClientParsing(parseResult);
+		return 1;
+	}
+
 	//come prima cosa bisogna connettersi al server
 
 	struct timespec abstime = {0,time(NULL)+OC_ABS_TIME};
 
-	
+	struct timespec reqTime = {(parseResult->REQ_TIME)/1000,((parseResult->REQ_TIME) % 1000)*1000000};
+
 
 	if(openConnection(parseResult->SOCKNAME,OC_RETRY_TIME,abstime) == -1){
 		if(errno == ENOENT)
@@ -360,12 +420,11 @@ int main(int argc, char* argv[]){
 				if(!isQueueEmpty(args)){
 					nextOp = args->head->data;
 					if(nextOp && nextOp->opt == 'D'){
-						removeFromQueue(args); //rimuovo il -D
+						removeFromHead(args); //rimuovo il -D
 						dirname = nextOp->arg;
-						//fprintf(stdout,"scrivo %s e rimpiazzo su %s\n",op->arg,dirname);
 					}
 				}
-				if(writeHandler(op->opt,op->arg,dirname) != 0)
+				if(writeHandler(op->opt,op->arg,dirname,&reqTime) != 0)
 					finish = 1;
 			}
 			break;
@@ -374,12 +433,11 @@ int main(int argc, char* argv[]){
 				if(!isQueueEmpty(args)){
 					nextOp = args->head->data;
 					if(nextOp && nextOp->opt == 'D'){
-						removeFromQueue(args); //rimuovo il -D
+						removeFromHead(args); //rimuovo il -D
 						dirname = nextOp->arg;
-						//fprintf(stdout,"scrivo %s e rimpiazzo su %s\n",op->arg,dirname);
 					}
 				}
-				if(writeHandler(op->opt,op->arg,dirname) != 0)
+				if(writeHandler(op->opt,op->arg,dirname,&reqTime) != 0)
 					finish = 1;
 			}
 
@@ -395,12 +453,16 @@ int main(int argc, char* argv[]){
 				if(!isQueueEmpty(args)){
 					nextOp = args->head->data;
 					if(nextOp && nextOp->opt == 'd'){
-						removeFromQueue(args); //rimuovo il -D
-						dirname = nextOp->arg;
+						if((dirname = strndup(nextOp->arg,UNIX_PATH_MAX)) == NULL){
+							finish = 1;
+							continue;
+						}
+						removeFromHead(args); //rimuovo il -D
 					}
 				}
-				if(readHandler(op->opt,op->arg,dirname) != 0)
+				if(readHandler(op->opt,op->arg,dirname,&reqTime) != 0)
 					finish = 1;
+
 			}
 			break;
 
@@ -409,14 +471,21 @@ int main(int argc, char* argv[]){
 				finish = 1;
 			break;
 
-			case 'R':
-				nextOp = args->head->data;
-				if(nextOp && nextOp->opt == 'd'){
-					removeFromQueue(args); //rimuovo il -D
-					fprintf(stdout,"leggo %s file su %s\n",op->arg,nextOp->arg);
-				}else{
-					fprintf(stdout,"leggo %s file\n",op->arg);
+			case 'R':{
+				if(!isQueueEmpty(args)){
+					nextOp = args->head->data;
+					if(nextOp && nextOp->opt == 'd'){
+						if((dirname = strndup(nextOp->arg,UNIX_PATH_MAX)) == NULL){
+							finish = 1;
+							continue;
+						}
+						removeFromHead(args); //rimuovo il -D
+					}
 				}
+				if(readHandler(op->opt,op->arg,dirname,&reqTime) != 0)
+					finish = 1;
+			
+			}
 			break;
 
 			case 'l':
@@ -428,21 +497,18 @@ int main(int argc, char* argv[]){
 			break;
 
 			case 'c':
-				removeHandler(op->arg);
+				removeHandler(op->arg,&reqTime);
 				//fprintf(stdout,"rimuovo %s\n",op->arg);
 			break;
 
 			default:;
 		}
 		
-		if(dirname){
+		freeOp(op);
+		if(dirname)
 			free(dirname);
-			free(nextOp);
-		}
-		
-		free(op->arg);
-		free(op);
-			
+		// free(op->arg);
+		// free(op);
 	}
 	
 	
@@ -453,7 +519,6 @@ int main(int argc, char* argv[]){
 	
 	ec(closeConnection(parseResult->SOCKNAME),-1,"close connection",destroyClientParsing(parseResult);return 1)
 	
-
 	
 	destroyClientParsing(parseResult);
 

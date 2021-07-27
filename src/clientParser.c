@@ -18,9 +18,9 @@ void destroyClientParsing(parseT* parseResult){
 }
 
 void freeOp(void* op){
-	optT* opt = op;
+	optT* opt = (optT*)op;
 	free(opt->arg);
-	free(op);
+	free(opt);
 }
 
 
@@ -66,11 +66,11 @@ parseT* parser(int argc, char* argv[]){
 
 	int ret = 0;
 	char opt;
-	while((opt = getopt(argc,argv,":hf::w:W:D:r:R::d:t::l:u:c:p")) != -1){
+	while((opt = getopt(argc,argv,":hf:w:W:D:r:R::d:t:l:u:c:p")) != -1){
 		switch(opt){
 			case 'h':  
 				fprintf(stdout,HELP_MESSAGE); 
-				destroyQueue(argQueue); 
+				destroyClientParsing(parseResult); 
 				return NULL; 
 			break;
 			
@@ -78,10 +78,10 @@ parseT* parser(int argc, char* argv[]){
 				if(optind < argc && argv[optind][0] != '-')
 					optarg = argv[optind];
 					//ret = enqueueArg(argQueue,opt,optarg);
-				if(optarg){
-					ret = enqueueArg(argQueue,opt,optarg);
+				if(!optarg){
+					optarg = "n=0";
 				}
-
+				ret = enqueueArg(argQueue,opt,optarg);
 			break;
 
 			case 'p': 
@@ -132,7 +132,7 @@ parseT* parser(int argc, char* argv[]){
     		break;
 			default:
 				//if(optarg[0] != '-')
-					ret = enqueueArg(argQueue,opt,optarg);
+				ret = enqueueArg(argQueue,opt,optarg);
 			break;
 		}
 
