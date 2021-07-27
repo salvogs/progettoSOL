@@ -13,7 +13,7 @@ typedef struct datatype{
 typedef struct _queue{
 	size_t ndata;
 	void (*freeFun)(void*);
-	int (*compare)(void*,void*);
+	int (*cmpFun)(void*,void*);
 	data *head;
 	data *tail;
 }queue;
@@ -22,15 +22,17 @@ typedef struct _queue{
 //ritorna 1 se la coda e' vuota 0 altrimenti
 int isQueueEmpty(queue* q);
 
-queue* createQueue(void (*freeFun)(void *), int (*compare)(void*,void*));
+queue* createQueue(void (*freeFun)(void *), int (*cmpFun)(void*,void*));
 
 int enqueue(queue* q, void* data);
 
 void* dequeue(queue* q);
 
-int removeFromQueue(queue* q);
+int removeFromHead(queue* q);
 
-int findQueue(queue* q,void* elem);
+int removeFromQueue(queue* q, void* elem);
+
+void* findQueue(queue* q,void* elem);
 
 void destroyData(queue* q);
 

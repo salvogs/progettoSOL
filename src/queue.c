@@ -6,19 +6,26 @@
 
 
 int isQueueEmpty(queue* q){
-	if(q->ndata == 0)
+	if(!q || q->ndata == 0)
 		return 1;
 	return 0;
 }
 
-queue* createQueue(void (*freeFun)(void*), int (*compare)(void*,void*)){
+int cmpInt(void* a, void* b){
+	return ((long)a == (long)b);
+}
+
+queue* createQueue(void (*freeFun)(void*), int (*cmpFun)(void*,void*)){
+	
 	queue *q = (queue*) malloc(sizeof(queue));
 	if(q == NULL)//malloc fallita
 		return NULL;
 	
 	q->ndata = 0;
+	//default free and cmp function
 	q->freeFun = freeFun ? freeFun : free;
-	q->compare = compare;
+	q->cmpFun = cmpFun ? cmpFun : cmpInt;
+	
 	q->head = q->tail = NULL;
 
 
@@ -51,7 +58,11 @@ int enqueue(queue* q, void* elem){
 	return 0;
 }
 
-
+/* pop dalla testa della coda
+	il chiamante si occupera' di fare la free
+return: NULL no elementi in coda
+		
+*/
 void* dequeue(queue* q){
 	if(isQueueEmpty(q))
 		return NULL;
@@ -75,12 +86,12 @@ void* dequeue(queue* q){
 	return elem;
 	
 }
-/* pop dalla coda senza ritornare il dato
+/* pop dalla testa della coda senza ritornare il dato
 
 return: 1 no elementi in coda
 		0 successo
 */
-int removeFromQueue(queue* q){
+int removeFromHead(queue* q){
 
 	if(isQueueEmpty(q))
 		return 1;
@@ -88,6 +99,7 @@ int removeFromQueue(queue* q){
 	data* newHead = q->head->next;
 	if(newHead == NULL){
 		q->ndata--;
+		q->freeFun(q->head->data);
 		free(q->head);
 		q->head = NULL;
 		q->tail = NULL;
@@ -95,6 +107,7 @@ int removeFromQueue(queue* q){
 	}
 
 	newHead->prev = NULL;
+	q->freeFun(q->head->data);
 	free(q->head);
 	q->head = newHead;
 	q->ndata--;
@@ -102,20 +115,55 @@ int removeFromQueue(queue* q){
 	return 0;
 }
 
+// cerca elem nella coda e lo rimuove
 
-int findQueue(queue* q,void* elem){
+int removeFromQueue(queue* q, void* elem){
 	if(isQueueEmpty(q))
-		return 0;
+		return 1;
+	
+	data *curr = q->head;
+	while (curr && !(q->cmpFun(curr->data, elem)))
+		curr = curr->next;
+
+	if(!curr)
+		return 1;
+
+
+	//se elem e' la testa
+	if(curr == q->head){
+		return removeFromHead(q);
+	}
+	data* prev = curr->prev;
+	data* succ = curr->next;
+
+	//se elem e' la coda
+	if(succ == NULL){
+		prev->next = NULL;
+		q->tail = prev;
+	}else{
+		prev->next = succ;
+		succ->prev = prev;
+	}
+
+	q->freeFun(curr);
+	q->ndata--;
+
+	return 0;
+}
+
+void* findQueue(queue* q,void* elem){
+	if(isQueueEmpty(q))
+		return NULL;
 
 	data* curr = q->head;
 
 	while(curr){
-		if(q->compare(elem,curr->data))
-			return 1; //trovato!
+		if(q->cmpFun(elem,curr->data))
+			return curr->data; //trovato!
 		curr = curr->next;
 	}
 	
-	return 0; 
+	return NULL; 
 }
 
 void destroyData(queue* q){
@@ -126,7 +174,6 @@ void destroyData(queue* q){
 		q->ndata--;
 		q->head = q->head->next;
 		q->freeFun(tmp->data);
-		
 		free(tmp);
 		tmp = q->head;
 	}
