@@ -22,27 +22,20 @@
 		 ed eventualmente il numero di file espulsi(quindi su cui fare altre read)
 */
 
-typedef struct{
-	char* pathname;
-	size_t size;
-
-	void* content;	
-}ejectedFileT;
-
-
-
 #define OP_REQUEST_SIZE 1
-#define RESPONSE_SIZE 1
+#define RESPONSE_CODE_SIZE 1
+#define PATHNAME_LEN 4
+#define FLAG_SIZE 1
 #define MAX_FILESIZE_LEN 10
-#define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
 // operazioni
 
 #define OPEN_FILE 1
 #define CLOSE_FILE 2
 #define WRITE_FILE 3
-#define READ_FILE 4
-#define READ_N_FILE 5
-#define REMOVE_FILE 6
+#define APPEND_TO_FILE 4
+#define READ_FILE 5
+#define READ_N_FILE 6
+#define REMOVE_FILE 7
 // flag openFile
 
 #define O_CREATE 1
@@ -56,8 +49,8 @@ typedef struct{
 #define FILE_NOT_EXISTS 3
 #define EMPTY_FILE 4
 #define BAD_REQUEST 5
-#define FILE_LIST 6
-#define END_FILE 7
+#define SENDING_FILE 6
+#define END_SENDING_FILE 7
 
 
 

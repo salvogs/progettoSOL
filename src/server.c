@@ -145,7 +145,7 @@ void* workerFun(){
 	
 	char reqBuf[OP_REQUEST_SIZE] = "";
 
-	char resBuf[RESPONSE_SIZE+1] = "";
+	char resBuf[RESPONSE_CODE_SIZE+1] = "";
 
 
 	while(!end){
@@ -203,9 +203,9 @@ void* workerFun(){
 					if(ret == SERVER_ERROR){
 						perror("open file");
 					}
-					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 
 				//printf("dopo di openFile %d\n",storage->fileNum);
@@ -215,16 +215,32 @@ void* workerFun(){
 			break;
 			
 			case WRITE_FILE:{
-				ret = write_file(storage,fd); 
+				ret = write_append_file(storage,fd,0); 
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
 						perror("write file");
 					}			
-					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+				}
+				
+			}
+			break;
+
+			case APPEND_TO_FILE:{
+				ret = write_append_file(storage,fd,1); 
+				
+				if(ret != -1){
+					if(ret == SERVER_ERROR){
+						perror("write file");
+					}			
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
@@ -237,10 +253,10 @@ void* workerFun(){
 					if(ret == SERVER_ERROR){
 						perror("read file");
 					}	
-					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta(errore) al client
-					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
@@ -255,10 +271,10 @@ void* workerFun(){
 						perror("remove file");
 					}
 
-					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
@@ -272,10 +288,10 @@ void* workerFun(){
 					if(ret == SERVER_ERROR){
 						perror("read n file");
 					}			
-					snprintf(resBuf,RESPONSE_SIZE+1,"%d",ret);
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
