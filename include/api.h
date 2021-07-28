@@ -190,8 +190,8 @@ int removeFile(const char* pathname);
 
 
 int getFile(size_t* size,void** content, char** pathname);
-
-// int getEjectedFiles(int n,const char* dirname,size_t* bytes);
-
+int getResponseCode(int fd);
+int sendRequest(int fd, void* req, int len);
+int getPathname(char** pathname);
 
 #endif

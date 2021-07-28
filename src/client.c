@@ -163,14 +163,17 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		int ret = recursiveVisit(pathname,&n,limited,dirname);
 		free(pathname);
 
-		nanosleep(reqTime,NULL);
 		if(ret == 1){
 			return 1;
 		}
+		nanosleep(reqTime,NULL);
 		
 		// openFile(args,O_CREATE | O_LOCK);
 	}else{ // opt = W
 		char* pathname;
+		void* content = NULL;
+		size_t size = 0;
+
 		path = strtok_r(args,",",&save);
 
 		while(path){
@@ -197,11 +200,33 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 						return 1;
 					} 
 					
-			}else if(errno){
-				perror("openFile");
-				free(pathname);
-				return 1;
-			}
+			}else{
+				if(errno){
+					perror("openFile");
+					free(pathname);
+					return 1;
+				}
+
+				// provo ad aprire il file senza flag e a fare la append
+				if(openFile(pathname,0) == 0){
+					ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return 1)
+
+					if(appendToFile(pathname,content,size,dirname) == 0){
+						
+						//closefile
+					}else if(errno){
+						perror("appendToFile");
+						free(content);
+						free(pathname);
+						return 1;
+					} 
+				}if(errno){
+					perror("openFile");
+					free(pathname);
+					return 1;
+				}
+				free(content);
+			} 
 			
 			free(pathname);
 			path = strtok_r(NULL,",",&save);
@@ -214,53 +239,6 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 }
 
 
-int writeOnDisk(const char* dirname,const char* path, void* buf, size_t size){
-
-	int newLen = strlen(dirname) + strlen(path)+1; // \0  
-	char* newPath = calloc(newLen,1);
-	ec(newPath,NULL,"calloc",return 1);
-
-	strncpy(newPath,dirname,newLen-1);
-    // strncat(newPath,"/",newLen-1);
-    strncat(newPath,path,newLen-1);
-
-	char* tmp = strndup(newPath,newLen);
-	chk_null(tmp,1);
-
-	for(int i = newLen-1;i >= 0;i--){
-		if(tmp[i] == '/'){
-			tmp[i] = '\0';
-			i = -1;
-		}
-	}
-
-	char* save = NULL,*token;
-	
-	char initialDir[UNIX_PATH_MAX];
-	getcwd(initialDir,UNIX_PATH_MAX);
-	
-	token = strtok_r(tmp,"/",&save);
-
-	while(token){
-		if(mkdir(token,S_IRWXU) != 0 && errno != EEXIST){
-			free(newPath);
-			free(tmp);
-			return 1;
-		}
-		chdir(token);
-		token = strtok_r(NULL,"/",&save);
-	}
-	free(tmp);
-
-	chdir(initialDir);
-
-	FILE* fPtr = fopen(newPath,"w+");
-	free(newPath);
-	fwrite(buf,1,size,fPtr);
-
-	fclose(fPtr);
-	return 0;
-}
 
 
 
@@ -281,7 +259,9 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 					size_t size;
 					if(readFile(path,&buf,&size) == 0){
 						if(dirname){
-							writeOnDisk(dirname,path,buf,size);
+							if(writeFileOnDisk(dirname,path,buf,size) != 0){
+								return 1;
+							}
 						}
 						if(buf)
 							free(buf);
@@ -314,14 +294,6 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 			}
 		}
 		
-	
-		// if(dirname){
-		// 	dir = realpath(dirname,NULL);
-		// 	if(!dir){
-		// 		free(dir);
-		// 		return 1;
-		// 	}
-		// }
 		
 		readNFiles(n,dirname);
 		//free(dirname);
@@ -344,7 +316,6 @@ int removeHandler(char* args,struct timespec* reqTime){
 	path = strtok_r(args,",",&save);
 
 	while(path){
-		//pathname =  realpath(path,NULL);
 		if(!path){
 			free(path);
 			perror("realpath");
@@ -357,9 +328,6 @@ int removeHandler(char* args,struct timespec* reqTime){
 				perror("removeFile");
 				return 1;
 		}
-		
-
-		//free(path);
 
 		path = strtok_r(NULL,",",&save);
 		nanosleep(reqTime,NULL);

@@ -1,8 +1,15 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+
 #include <sys/types.h>
 #include <errno.h>
+#include <sys/stat.h>
+char *strndup(const char *s, size_t n);
+
+
+#define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
+
 
 // Macro controllo errori
 #define ec(s, r, m, e) \
@@ -23,6 +30,12 @@
 
 #define chk_null(s,r) \
     if((s) == NULL) \
+    {               \
+        return r;   \
+    }       
+
+#define chk_neg1(s,r) \
+    if((s) == -1) \
     {               \
         return r;   \
     }       
@@ -55,5 +68,11 @@ ssize_t readn(int fd, void *ptr, size_t n);
  */
 ssize_t writen(int fd, void *ptr, size_t n);
 
+
+
+
+int readFileFromDisk(const char* pathname, void** content, size_t* size);
+
+int writeFileOnDisk(const char* dirname,const char* path, void* buf, size_t size);
 
 #endif

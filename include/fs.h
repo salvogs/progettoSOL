@@ -41,7 +41,7 @@ fsT* create_fileStorage(char* configPath, char* delim);
 
 int open_file(fsT* storage, int fd);
 
-int write_file(fsT* storage,int fd);
+int write_append_file(fsT* storage,int fd,int mode);
 
 int read_file(fsT* storage,int fd);
 
@@ -53,7 +53,10 @@ void freeFile(void* fptr);
 
 int cmpFile(void* f1, void* f2);
 
+int get_pathname(int fd,char** pathname);
 
+
+int get_flags(int fd, int *flags);
 
 
 #endif
