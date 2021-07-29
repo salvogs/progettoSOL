@@ -145,7 +145,8 @@ int removeFromQueue(queue* q, void* elem){
 		succ->prev = prev;
 	}
 
-	q->freeFun(curr);
+	q->freeFun(curr->data);
+	free(curr);
 	q->ndata--;
 
 	return 0;
