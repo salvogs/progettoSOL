@@ -171,6 +171,7 @@ int open_file(fsT* storage, int fd){
 
 	//leggo i flags
 	if((ret = get_flags(fd, &flags)) != 0){
+		free(pathname);
 		return ret;
 	}
 	
@@ -182,6 +183,7 @@ int open_file(fsT* storage, int fd){
 	fT* fPtr = icl_hash_find(storage->ht,pathname);
 
 	if(fPtr){ // se il file è già nel file storage
+		free(pathname);
 		if(create){
 			//fprintf(stderr,"file esistente\n");
 				return FILE_EXISTS;
@@ -189,10 +191,11 @@ int open_file(fsT* storage, int fd){
 		if(lock){
 			// LOCK
 		}	
-
+	
 	}else{ // il file deve essere creato
 		if(!create){
 			//fprintf(stderr,"flag O_CREATE non specificato\n");
+
 			return FILE_NOT_EXISTS;
 		}
 		// LOCK
@@ -202,25 +205,22 @@ int open_file(fsT* storage, int fd){
 
 		}
 
-		if(!(fPtr = malloc(sizeof(fT))))
-			return SERVER_ERROR;
-
+		chk_null_op(fPtr = malloc(sizeof(fT)),free(pathname),SERVER_ERROR)
+		
 		fPtr->pathname = pathname;
-		// malloc(strlen(path)+1);
-		// strncpy(fPtr->pathname,path,strlen(path)+1);
+		
 
 		fPtr->size = 0;
 		fPtr->content = NULL;
 		
 
-		if(!(icl_hash_insert(storage->ht,pathname,fPtr)))
-			return SERVER_ERROR;
+		chk_null_op(icl_hash_insert(storage->ht,pathname,fPtr),free(pathname),SERVER_ERROR)
 
 		// inserisco in coda per politica rimpiazzamento
-		if(enqueue(storage->filesQueue,fPtr) != 0)
+		if(enqueue(storage->filesQueue,fPtr) != 0){
 			return SERVER_ERROR;
+		}
 	}
-	
 	
 	return SUCCESS;
 }
@@ -258,7 +258,7 @@ int write_append_file(fsT* storage,int fd, int mode){
 	}else{ // modalita' append
 	
 		fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
-		chk_null(fPtr->content,SERVER_ERROR)
+		chk_null_op(fPtr->content,free(content),SERVER_ERROR)
 
 		memcpy(fPtr->content+fPtr->size,content,size);
 		fPtr->size += size;
@@ -382,7 +382,7 @@ int read_n_file(fsT* storage,int fd){
 				free(res);
 				return -1;
 			}
-
+		free(res);
 		curr = curr->next;
 		n--;
 	}
@@ -403,14 +403,14 @@ int remove_file(fsT* storage, int fd){
 
 
 	fT* fPtr = icl_hash_find(storage->ht,pathname);
-	chk_null(fPtr,FILE_NOT_EXISTS);
+	chk_null_op(fPtr,free(pathname),FILE_NOT_EXISTS);
 
 	// rimuovo dalla coda di rimpiazzamento
 	if(removeFromQueue(storage->filesQueue,fPtr) != 0)
 		return FILE_NOT_EXISTS; 
 
 	// rimuovo dalla hash table
-	if(icl_hash_delete(storage->ht,pathname,free,freeFile) == -1)
+	if(icl_hash_delete(storage->ht,pathname,free,NULL) == -1)
 		return FILE_NOT_EXISTS; 
 	
 

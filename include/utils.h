@@ -34,9 +34,25 @@ char *strndup(const char *s, size_t n);
         return r;   \
     }       
 
+#define chk_null_op(s,op,r) \
+    if((s) == NULL) \
+    {               \
+        (op);         \
+        return r;   \
+    }       
+
+
+
 #define chk_neg1(s,r) \
     if((s) == -1) \
     {               \
+        return r;   \
+    }       
+
+#define chk_neg1_op(s,op,r) \
+    if((s) == -1) \
+    {               \
+        (op);         \
         return r;   \
     }       
 
