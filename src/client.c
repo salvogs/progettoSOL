@@ -101,22 +101,44 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 						return 1;
 					}	
 					
-				}else if(errno){
-					closedir(d);
-					perror("openFile");
-					return 1;
-				}
-			}
-        }
-    }
-    
+				}else{
+					if(errno){
+						closedir(d);
+						perror("openFile");
+						return 1;
+					}
+					void* content = NULL;
+					size_t size = 0;
+					// provo ad aprire il file senza flag e a fare la append
+					if(openFile(absoluteName,0) == 0){
+						ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return 1)
 
+						if(appendToFile(absoluteName,content,size,dirname) == 0){
+							if(limited)
+								(*n)--;
+							//closefile
+						}else if(errno){
+							perror("appendToFile");
+							free(content);
+							free(pathname);
+							return 1;
+						} 
+					}else if(errno){
+						perror("openFile");
+						free(pathname);
+						return 1;
+					}
+					free(content);
+				} 
+			}
+		}
+    }
 
     closedir(d);
 
 	return 0;
-
 }
+    
 int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 	char* save;
@@ -177,6 +199,7 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		path = strtok_r(args,",",&save);
 
 		while(path){
+			errno = 0;
 			pathname =  realpath(path,NULL);
 			if(!pathname){
 				free(pathname);
