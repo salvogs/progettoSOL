@@ -186,20 +186,29 @@ int writeFile(const char* pathname, const char* dirname){
 	
 	int response = getResponseCode(FD_CLIENT);
 
-	PRINTER("WRITE FILE",pathname,response)
+	size_t bytes = 0;
+	int readCounter = 0;
 
+	while(response == SENDING_FILE){
+		chk_neg1(getEjectedFile(response,dirname,&bytes,&readCounter),-1)
+		
+		response = getResponseCode(FD_CLIENT);	
+	}
 	
-	PRINT(fprintf(stdout,"Scritti: %ld bytes\n",fsize))
-
-
-	if(response != SUCCESS)
-		return -1;
-
-	return 0;
+	// leggo risposta della write
+	if(response == END_SENDING_FILE){
+		response = getResponseCode(FD_CLIENT);
+	}
+	
+	PRINTER("WRITE FILE",pathname,response)
+	if(response == SUCCESS){
+		PRINT(fprintf(stdout,"Scritti: %ld bytes\n",fsize))
+		return 0;
+	}
+	
+	return -1;
 
 }
-
-
 
 int appendToFile(const char* pathname, void* buf, size_t size, const char* dirname){
 	
@@ -230,17 +239,28 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 	
 	int response = getResponseCode(FD_CLIENT);
 
-	PRINTER("APPEND TO FILE",pathname,response)
+	size_t bytes = 0;;
+	int readCounter = 0;
 
+	while(response == SENDING_FILE){
+		chk_neg1(getEjectedFile(response,dirname,&bytes,&readCounter),-1)
+		
+		response = getResponseCode(FD_CLIENT);	
+	}
 	
-	PRINT(fprintf(stdout,"Scritti: %ld bytes\n",size))
-
-
-
-	if(response != SUCCESS)
-		return -1;
-
-	return 0;
+	// leggo risposta della write
+	if(response == END_SENDING_FILE){
+		response = getResponseCode(FD_CLIENT);
+	}
+	
+	PRINTER("APPEND TO FILE",pathname,response)
+	if(response == SUCCESS){
+		PRINT(fprintf(stdout,"Scritti: %ld bytes\n",size))
+		return 0;
+	}
+	
+	return -1;
+	
 
 }
 
@@ -297,7 +317,11 @@ int readFile(const char* pathname, void** buf, size_t* size){
 	size_t fileSize = 0;
 	void* content = NULL;
 
+	// se response == EMPTY_FILE size = 0
+
+
 	if(response == SENDING_FILE){
+		puts("quii");
 		// mi aspetto: size del file letto, file letto
 		if(getFile(&fileSize,&content,NULL) != 0)
 			return -1;
@@ -306,7 +330,7 @@ int readFile(const char* pathname, void** buf, size_t* size){
 	*size = fileSize;
 	*buf = content;
 	
-	PRINTER("READ FILE",pathname,SUCCESS)
+	PRINTER("READ FILE",pathname,response)
 
 	
 	PRINT(fprintf(stdout,"Letti: %ld bytes\n",*size))
@@ -340,47 +364,19 @@ int readNFiles(int N, const char* dirname){
 		return -1;
 	}
 
-	/* mi aspetto una sequenza di SUCCESS-FILE
-	quando i file da leggere sono finiti response sara' END
+	/* mi aspetto una sequenza di SENDING_FILE/EMPTY_FILE
+	quando i file da leggere sono finiti response sara' END_SENDING_FILE
 	*/
-	
-
 
 	size_t bytes = 0;;
 	int readCounter = 0;
 
 	while(response == SENDING_FILE || response == EMPTY_FILE){
-		void* content = NULL;
-		char* pathname = NULL;
-		size_t size = 0;
-
-		if(response == EMPTY_FILE){
-			if(getPathname(&pathname) != 0)
-				return -1;
-			PRINTER("READ N FILE",pathname,EMPTY_FILE)
-		}else{
-			if(getFile(&size,&content,&pathname) != 0)
-				return -1;
-			PRINTER("READ N FILE",pathname,SUCCESS)
-		}
-
-
+		chk_neg1(getEjectedFile(response,dirname,&bytes,&readCounter),-1)
 		
-		bytes += size;
-		readCounter++;
-
-		if(dirname){
-			if(writeFileOnDisk(dirname,pathname,content,size) != 0)
-				return -1;
-		}
-
-		if(pathname)
-			free(pathname);
-		if(content)
-			free(content);
-
-		response = getResponseCode(FD_CLIENT);
+		response = getResponseCode(FD_CLIENT);	
 	}
+	
 	
 	if(response == END_SENDING_FILE){
 		PRINT(fprintf(stdout,"Letti: %d files e %ld bytes\n",readCounter,bytes))
@@ -391,6 +387,8 @@ int readNFiles(int N, const char* dirname){
 
 
 }
+
+
 
 int sendRequest(int fd, void* req, int len){
 	if(writen(FD_CLIENT,req,len) == -1){
@@ -520,6 +518,37 @@ int getFile(size_t* size,void** content, char** pathname){
 
 	*size = size_;
 	*content = content_;
+
+	return 0;
+}
+
+int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCounter){
+	void* content = NULL;
+	char* pathname = NULL;
+	size_t size = 0;
+
+	if(response == EMPTY_FILE){
+		if(getPathname(&pathname) != 0)
+			return -1;
+	}else{
+		if(getFile(&size,&content,&pathname) != 0)
+			return -1;
+	}
+	PRINT(fprintf(stdout,"RICEVUTO : %s : %ld bytes\n",pathname,size))
+
+	if(dirname){
+		if(writeFileOnDisk(dirname,pathname,content,size) != 0){
+			if(content) free(content);
+			free(pathname);
+			return -1;
+		}
+	}
+	free(pathname);
+	if(content) 
+		free(content);
+	
+	*bytes += size;
+	(*readCounter)++;
 
 	return 0;
 }

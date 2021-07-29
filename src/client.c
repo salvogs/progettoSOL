@@ -208,6 +208,7 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 			}
 			//controllo che sia effettivamente un file regolare
 			if(!isRegularFile(pathname)){
+				fprintf(stderr,"%s non e' un file regolare\n",pathname);
 				free(pathname);
 				return 1;
 			}
@@ -411,8 +412,11 @@ int main(int argc, char* argv[]){
 				if(!isQueueEmpty(args)){
 					nextOp = args->head->data;
 					if(nextOp && nextOp->opt == 'D'){
+						if((dirname = strndup(nextOp->arg,UNIX_PATH_MAX)) == NULL){
+							finish = 1;
+							continue;
+						}
 						removeFromHead(args); //rimuovo il -D
-						dirname = nextOp->arg;
 					}
 				}
 				if(writeHandler(op->opt,op->arg,dirname,&reqTime) != 0)
@@ -424,8 +428,11 @@ int main(int argc, char* argv[]){
 				if(!isQueueEmpty(args)){
 					nextOp = args->head->data;
 					if(nextOp && nextOp->opt == 'D'){
+						if((dirname = strndup(nextOp->arg,UNIX_PATH_MAX)) == NULL){
+							finish = 1;
+							continue;
+						}
 						removeFromHead(args); //rimuovo il -D
-						dirname = nextOp->arg;
 					}
 				}
 				if(writeHandler(op->opt,op->arg,dirname,&reqTime) != 0)
@@ -448,7 +455,7 @@ int main(int argc, char* argv[]){
 							finish = 1;
 							continue;
 						}
-						removeFromHead(args); //rimuovo il -D
+						removeFromHead(args); //rimuovo il -d
 					}
 				}
 				if(readHandler(op->opt,op->arg,dirname,&reqTime) != 0)
@@ -470,7 +477,7 @@ int main(int argc, char* argv[]){
 							finish = 1;
 							continue;
 						}
-						removeFromHead(args); //rimuovo il -D
+						removeFromHead(args); //rimuovo il -d
 					}
 				}
 				if(readHandler(op->opt,op->arg,dirname,&reqTime) != 0)

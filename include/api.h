@@ -26,7 +26,8 @@
 // 	}
 // }
 
-// a = arg r = retvalue
+// a = arg r = retvalue  
+// nel caso di RECIVED_FILE op funge da bytes del file
 #define PRINTER(op,a,r)  \
 	if(PRINTS){\
 		switch(r){\
@@ -47,6 +48,9 @@
 			break;\
 			case BAD_REQUEST:\
 				fprintf(stdout,"%s : %s : RICHIESTA INCOMPLETA\n",op,a);\
+			break;\
+			case FILE_TOO_LARGE:\
+				fprintf(stdout,"%s : %s : FILE TROPPO GRANDE\n",op,a);\
 			break;\
 			default:;break;\
 		}\
@@ -193,5 +197,5 @@ int getFile(size_t* size,void** content, char** pathname);
 int getResponseCode(int fd);
 int sendRequest(int fd, void* req, int len);
 int getPathname(char** pathname);
-
+int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCounter);
 #endif
