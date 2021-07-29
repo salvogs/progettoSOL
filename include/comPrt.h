@@ -51,7 +51,8 @@
 #define BAD_REQUEST 5
 #define SENDING_FILE 6
 #define END_SENDING_FILE 7
-
+#define RECIVED_FILE 8
+#define FILE_TOO_LARGE 9
 
 
 #endif

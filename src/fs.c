@@ -251,6 +251,53 @@ int write_append_file(fsT* storage,int fd, int mode){
 	if((ret = get_file(fd,&size,&content)) != 0){
 		return ret;
 	}
+	
+	if(size > storage->maxCapacity){
+		/* anche rimuovendo tutti i file attualmente presenti 
+		non si siuscirebbe a memorizzare quello inviato dal client
+		*/
+		return FILE_TOO_LARGE;
+	}
+
+	int ejected = 0;
+	// non posso scrivere il file fin quando non c'e' spazio libero
+	while(size + storage->currCapacity > storage->maxCapacity){
+	
+		fT* ef = eject_file(storage->filesQueue,fPtr->pathname);
+		chk_null_op(ef,free(content),FILE_TOO_LARGE)
+
+		// lo invio al client e lo rimuovo dallo storage
+		long resLen = sizeof(char) + sizeof(int) + strlen(ef->pathname) + MAX_FILESIZE_LEN + ef->size +1;
+		char* res = calloc(resLen,1);
+		chk_null(res,SERVER_ERROR);
+		snprintf(res,resLen,"%d%4d%s%010ld",SENDING_FILE,(int)strlen(ef->pathname),ef->pathname,ef->size);
+		memcpy((res + strlen(res)),ef->content,ef->size);
+		
+		if(writen(fd,res,resLen-1) == -1){
+				perror("writen");
+				free(res);
+				return -1;
+			}
+		free(res);
+
+		storage->currCapacity -= ef->size;
+		ejected++;
+		char* ejpath = ef->pathname;
+		// rimuovo dalla coda di rimpiazzamento
+		if(removeFromQueue(storage->filesQueue,ef) != 0)
+			return SERVER_ERROR; 
+
+		// rimuovo dalla hash table
+		if(icl_hash_delete(storage->ht,ejpath,free,NULL) == -1)
+			return SERVER_ERROR; 
+
+	}
+	if(ejected){
+		char resBuf[RESPONSE_CODE_SIZE+1] = "";
+		snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",END_SENDING_FILE);
+		// invio risposta al client
+		ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return -1)
+	}
 
 	if(mode == 0){ // se modalita' Write
 		fPtr->size = size;
@@ -264,11 +311,39 @@ int write_append_file(fsT* storage,int fd, int mode){
 		fPtr->size += size;
 		free(content);
 	}
-
+	storage->currCapacity += size;
+	
 	return SUCCESS;
 
 }
 
+fT* eject_file(queue* fq,char* pathname){
+	
+	if(isQueueEmpty(fq))
+		return NULL;
+
+	data* curr = fq->head;
+	
+	fT* tmp = NULL; 
+
+	// scorro la coda di files fin quando non ne trovo uno non vuoto
+	while(curr){
+		tmp = curr->data;
+		// skippo i file vuoti e il file che voglio appendere
+		if(tmp->size > 0 && strcmp(tmp->pathname,pathname) != 0)
+			break;
+		
+		curr = curr->next;
+	}
+
+	if(curr){
+		return tmp;
+	}
+	// se sono tutti vuoti ritorno NULL
+	return NULL;
+	// return fq->head->data;
+		
+}
 
 
 

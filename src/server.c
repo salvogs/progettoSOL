@@ -235,7 +235,7 @@ void* workerFun(){
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
-						perror("write file");
+						perror("append to file");
 					}			
 					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
@@ -299,13 +299,7 @@ void* workerFun(){
 
 			default:;
 		}
-
-		// upperString(buf,strlen(buf));
-		//write(fd,buf,strlen(buf));
-		//close(fd);
-		//printf("%s\n",bufPipe);
-		
-		
+	
 		sprintf(bufPipe,"%d",fd);
 		write(pfd[1],bufPipe,4);
 	}

@@ -58,5 +58,6 @@ int get_pathname(int fd,char** pathname);
 
 int get_flags(int fd, int *flags);
 
+fT* eject_file(queue* fq, char* pathname);
 
 #endif
