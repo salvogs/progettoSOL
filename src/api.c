@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <string.h> //
 #include "../include/utils.h"
 #include "../include/api.h"
 #include "../include/client.h"

@@ -1,10 +1,17 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#define _GNU_SOURCE
 
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <sys/stat.h>
+
+
 char *strndup(const char *s, size_t n);
 
 

@@ -1,9 +1,10 @@
 #ifndef API_H
 #define API_H
 
-// #define _DEFAULT_SOURCE
 
-
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include <time.h>
 #include <sys/types.h>     
 #include <sys/socket.h>
@@ -11,7 +12,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <limits.h>
-#include <stdlib.h>
 #include <sys/stat.h>
 #include "../include/comPrt.h"
 //#include "../include/client.h"

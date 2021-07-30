@@ -199,12 +199,20 @@ int open_file(fsT* storage, int fd){
 			return FILE_NOT_EXISTS;
 		}
 		// LOCK
-		if((storage->currFileNum+1) < storage->maxFileNum)
-			storage->currFileNum++;
-		else{
+		// controllo che ci sia spazio a sufficienza 		
+		if((storage->currFileNum+1) > storage->maxFileNum){
+			// non importa che il file sia vuoto o meno
+			fT* ef = dequeue(storage->filesQueue);
+			chk_null(ef,SERVER_ERROR)
+
+			// rimuovo il file dallo storage senza inviarlo al client
+			printf("rimosso: %s\n",ef->pathname);
+			// rimuovo dalla hash table
+			if(icl_hash_delete(storage->ht,ef->pathname,free,freeFile) == -1)
+				return SERVER_ERROR; 
 
 		}
-
+	
 		chk_null_op(fPtr = malloc(sizeof(fT)),free(pathname),SERVER_ERROR)
 		
 		fPtr->pathname = pathname;
@@ -220,6 +228,8 @@ int open_file(fsT* storage, int fd){
 		if(enqueue(storage->filesQueue,fPtr) != 0){
 			return SERVER_ERROR;
 		}
+
+		storage->currFileNum++;
 	}
 	
 	return SUCCESS;
