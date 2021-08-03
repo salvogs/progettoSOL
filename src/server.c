@@ -9,26 +9,12 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <sys/select.h>
-#include <pthread.h>
 #include "../include/utils.h"
 #include "../include/configParser.h"
 #include "../include/fs.h"
 #include "../include/server.h"
 #include "../include/queue.h"
 #include "../include/comPrt.h"
-
-
-
-#define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
-	fprintf(stderr,"errore creazione thread\n"); \
-	exit(EXIT_FAILURE);}
-
-
-
-#define LOCK(l)      if (pthread_mutex_lock(l)!=0)        { printf("ERRORE FATALE lock\n"); exit(EXIT_FAILURE);}
-#define UNLOCK(l)    if (pthread_mutex_unlock(l)!=0)      { printf("ERRORE FATALE unlock\n"); exit(EXIT_FAILURE);}
-#define WAIT(c,l)    if (pthread_cond_wait(c,l)!=0)       { printf("ERRORE FATALE wait\n"); exit(EXIT_FAILURE);}
-#define SIGNAL(c)    if (pthread_cond_signal(c)!=0)       { printf("ERRORE FATALE signal\n"); exit(EXIT_FAILURE);}
 
 
 
@@ -88,6 +74,7 @@ int masterFun(){
 	
 	char bufPipe[BUFPIPESIZE];
 
+	
 	while(1){
 		//usiamo la select per evitare che le read e le accept si blocchino
 		
@@ -147,6 +134,8 @@ void* workerFun(){
 
 	char resBuf[RESPONSE_CODE_SIZE+1] = "";
 
+	queue* ejected = NULL;
+	chk_null(ejected = createQueue(freeFile,cmpFile),NULL);
 
 	while(!end){
 		LOCK(&request_mux);
@@ -189,7 +178,7 @@ void* workerFun(){
 		
 		//long reqLen;
 		
-
+	
 		switch(op){
 			case OPEN_FILE:{
 				// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
@@ -197,8 +186,21 @@ void* workerFun(){
 				
 			
 				//printf("prima di openFile %d\n",storage->fileNum);
-			
-				ret = open_file(storage,fd);				
+				char* pathname = NULL;
+				// leggo il pathname del file da rimuovere
+				if(getPathname(fd,&pathname) != 0){
+					return NULL;
+				}
+
+				int flags = 0;
+
+				//leggo i flags
+				if((getFlags(fd, &flags)) != 0){
+					free(pathname);
+					return NULL;
+				}
+
+				ret = open_file(storage,fd,pathname,flags);				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
 						perror("open file");
@@ -214,13 +216,21 @@ void* workerFun(){
 			
 			break;
 			
-			case WRITE_FILE:{
-				ret = write_append_file(storage,fd,0); 
+			case CLOSE_FILE:{
 				
-				if(ret != -1){
+				char* pathname = NULL;
+				// leggo il pathname del file da chiudere
+				if(getPathname(fd,&pathname) != 0){
+					return NULL;
+				}
+	
+				ret = close_file(storage,fd,pathname);
+				
+				if(ret != -1){			
 					if(ret == SERVER_ERROR){
-						perror("write file");
-					}			
+						perror("close file");
+					}
+
 					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
@@ -230,13 +240,42 @@ void* workerFun(){
 			}
 			break;
 
-			case APPEND_TO_FILE:{
-				ret = write_append_file(storage,fd,1); 
+			case WRITE_FILE:
+			case APPEND_TO_FILE:
+			{
+				char* pathname = NULL;
+	
+				// leggo il pathname del file da scrivere
+				if((getPathname(fd,&pathname)) != 0){
+					return NULL;
+				}
+
+				size_t size = 0;
+				void* content = NULL;
+
+				// leggo contentuto file
+				if(getFile(fd,&size,&content) != 0){
+					return NULL;
+}
+
+
+				ret = write_append_file(storage,fd,pathname,size,content,ejected); 
 				
 				if(ret != -1){
-					if(ret == SERVER_ERROR){
-						perror("append to file");
-					}			
+					if(ret == SERVER_ERROR && errno){
+						perror("write/append file");
+					}	
+
+					// mando i file espulsi
+					while(ejected->ndata){
+						fT* ef = dequeue(ejected);	
+						if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
+							return NULL;
+						}
+						freeFile(ef);
+
+					}
+					
 					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta al client
@@ -245,18 +284,53 @@ void* workerFun(){
 				
 			}
 			break;
+
+			// case APPEND_TO_FILE:{
+			// 	//ret = write_append_file(storage,fd,ejected); 
+				
+			// 	if(ret != -1){
+			// 		if(ret == SERVER_ERROR){
+			// 			perror("append to file");
+			// 		}			
+			// 		snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+
+			// 		// invio risposta al client
+			// 		ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+			// 	}
+				
+			// }
+			// break;
 
 			case READ_FILE:{
-				ret = read_file(storage,fd); 
+				int ret = 0;
+				char* pathname = NULL;
+				// leggo il pathname del file da leggere
+				if((ret = getPathname(fd,&pathname)) != 0){
+					return NULL;
+				}
+
+				size_t size = 0;
+				void* content = NULL;
+
+				ret = read_file(storage,fd,pathname,&size,&content); 
 				
 				if(ret != -1 && ret != SUCCESS){		
 					if(ret == SERVER_ERROR){
 						perror("read file");
 					}	
+					
 					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
 					// invio risposta(errore) al client
 					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+				}else{
+					// mando SENDING_FILE + size + file
+	
+					if(sendFile(fd,NULL,size,content) != 0){
+						return NULL;
+					}
+
+					free(content);
 				}
 				
 			}
@@ -264,7 +338,14 @@ void* workerFun(){
 
 			
 			case REMOVE_FILE:{
-				ret = remove_file(storage,fd);
+				
+				char* pathname = NULL;
+				// leggo il pathname del file da rimuovere
+				if(getPathname(fd,&pathname) != 0){
+					return NULL;
+				}
+
+				ret = remove_file(storage,fd,pathname);
 				
 				if(ret != -1){			
 					if(ret == SERVER_ERROR){
@@ -281,12 +362,46 @@ void* workerFun(){
 			break;
 
 		
-		case READ_N_FILE:{
-				ret = read_n_file(storage,fd); 
+			case READ_N_FILE:{
+
+				int n = 0;
+				if(getN(fd,&n) != 0){
+					return NULL;
+				}
+
+
+				ret = read_n_file(storage,n,fd,ejected); 
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
 						perror("read n file");
+					}	
+
+					// mando i file 
+					while(ejected->ndata){
+						fT* ef = dequeue(ejected);	
+						if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
+							return NULL;
+						}
+						freeFile(ef);
+
+					}
+
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+				}
+				
+			}
+			break;
+
+			case LOCK_FILE:{
+				ret = lock_file(storage,fd); 
+				
+				if(ret != -1){
+					if(ret == SERVER_ERROR){
+						perror("lock file");
 					}			
 					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
 
@@ -297,7 +412,28 @@ void* workerFun(){
 			}
 			break;
 
-			default:;
+			case UNLOCK_FILE:{
+				//ret = unlock_file(storage,fd); 
+				
+				if(ret != -1){
+					if(ret == SERVER_ERROR){
+						perror("unlock file");
+					}			
+					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+
+					// invio risposta al client
+					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+				}
+				
+			}
+			break;
+
+			default:{
+				ret = BAD_REQUEST;
+				snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+				// invio risposta al client
+				ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL);
+			}
 		}
 	
 		sprintf(bufPipe,"%d",fd);
@@ -360,3 +496,192 @@ int main(int argc, char* argv[]){
 }
 
 
+int getPathname(int fd,char** pathname){
+	// leggo lunghezza pathname
+	char* _pathLen = calloc(PATHNAME_LEN+1,1);
+	if(!_pathLen)
+		return SERVER_ERROR;
+
+	int ret = 0;
+
+	ret = readn(fd,_pathLen,PATHNAME_LEN);
+	if(ret == 0){
+		clientExit(fd);
+		free(_pathLen);
+		return -1;
+	}
+	if(ret == -1){
+		free(_pathLen);
+		return SERVER_ERROR;
+	}
+
+	int pathLen = atoi(_pathLen);
+
+	free(_pathLen);
+	
+	
+	//leggo pathname 
+	char* path = calloc(pathLen+1,1);
+	chk_null(path,SERVER_ERROR)
+
+
+	ret = readn(fd,path,pathLen);
+
+	if(ret == 0){
+		clientExit(fd);
+		free(path);
+		return -1;
+	}
+	if(ret == -1){
+		free(path);
+		return SERVER_ERROR;
+	}	
+
+	*pathname = path;
+	
+	return 0;
+}
+
+
+
+
+
+// mando al client il file
+int sendFile(int fd,char* pathname, size_t size, void* content){
+
+	long resLen = RESPONSE_CODE_SIZE+1;
+	char* res = NULL;
+
+
+
+	//long resLen = sizeof(char) + sizeof(int) + strlen(fPtr->pathname) + MAX_FILESIZE_LEN + fPtr->size +1;
+
+	if(pathname){ // voglio mandare pathname + file
+		resLen += PATHNAME_LEN + strlen(pathname);
+
+		if(size == 0){ // se il file è vuoto mando solo il pathname
+			res = calloc(resLen,1);
+			chk_null(res,SERVER_ERROR);
+
+			snprintf(res,resLen,"%d%4d%s",EMPTY_FILE,(int)strlen(pathname),pathname);
+		}else{
+			resLen +=  MAX_FILESIZE_LEN + size;
+			res = calloc(resLen,1);
+			chk_null(res,SERVER_ERROR);
+
+
+			snprintf(res,resLen,"%d%4d%s%010ld",SENDING_FILE,(int)strlen(pathname),pathname,size);
+			memcpy((res + strlen(res)),content,size);
+		}
+
+	}else{
+		// mando solo il file
+
+		resLen += MAX_FILESIZE_LEN + size;
+		res = calloc(resLen,1);
+		chk_null(res,SERVER_ERROR);
+
+		snprintf(res,resLen,"%d%010ld",SENDING_FILE,size); // fsize 10 char max
+		memcpy((res + strlen(res)),content,size);
+	}
+	
+	if(writen(fd,res,resLen-1) == -1){
+		perror("writen");
+		free(res);
+		return -1;
+	}
+	free(res);
+
+	return 0;
+}
+
+int getN(int fd, int* n){
+
+	// leggo numero file da leggere
+	char* buf = calloc(sizeof(int)+1,1);
+	chk_null(buf,SERVER_ERROR)
+		
+	int ret = 0;
+
+	ret = readn(fd,buf,sizeof(int));
+	if(ret == 0){
+		clientExit(fd);
+		free(buf);
+		return -1;
+	}
+	if(ret == -1){
+		free(buf);
+		return SERVER_ERROR;
+	}
+
+	*n = atoi(buf);
+
+	free(buf);
+
+	return 0;
+}
+
+int getFlags(int fd, int *flags){
+	int flags_ = 0;
+	int ret = readn(fd,&flags_,FLAG_SIZE);
+	if(ret == -1){
+		return -1;
+	}
+	if(ret == 0){
+		errno = ECONNRESET;
+		return -1;
+	}
+	*flags = flags_ - '0';
+
+	return 0;
+}
+
+
+
+int getFile(int fd, size_t* size, void** content){
+
+	char* fileSize = calloc(MAX_FILESIZE_LEN+1,1);
+	chk_null(fileSize,SERVER_ERROR)
+	//leggo dimensioneFile
+	int ret = readn(fd,fileSize,MAX_FILESIZE_LEN);
+	if(ret == 0){
+		clientExit(fd);
+		free(fileSize);
+		return -1;
+	}
+	if(ret == -1){
+		free(fileSize);
+		return SERVER_ERROR;
+	}
+  
+	size_t size_ = 0;	
+
+	if(isNumber(fileSize,(long*)&size_) != 0){
+		free(fileSize);
+		return BAD_REQUEST;
+	}
+	free(fileSize);
+
+	void* content_ = (void*) malloc(size_);
+	chk_null(content_,SERVER_ERROR)
+
+	//leggo contenuto file
+	ret = readn(fd,content_,size_);
+
+	if(ret == 0){
+		errno = ECONNRESET;
+		free(content_);
+		return -1;
+	}
+	if(ret == -1){
+		free(content_);
+		return SERVER_ERROR;
+	}
+
+
+	*size = size_;
+	*content = content_;
+
+	return 0;
+	
+}

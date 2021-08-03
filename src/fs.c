@@ -42,290 +42,464 @@ fsT* create_fileStorage(char* configPath, char* delim){
 	storage->currCapacity = 0;
 	storage->currFileNum = 0;
 	ec(storage->filesQueue = createQueue(freeFile,cmpFile),NULL,"create queue",return NULL)
-	
+
+	ec_n(pthread_mutex_init(&(storage->smux),NULL),0,"pthread mutex init storage",return NULL)
 
 	return storage;	
 }
 
-int get_pathname(int fd,char** pathname){
-	// leggo lunghezza pathname
-	char* _pathLen = calloc(PATHNAME_LEN+1,1);
-	if(!_pathLen)
-		return SERVER_ERROR;
 
-	int ret = 0;
+int open_file(fsT* storage, int fdClient, char* pathname, int flags){
 
-	ret = readn(fd,_pathLen,PATHNAME_LEN);
-	if(ret == 0){
-		clientExit(fd);
-		free(_pathLen);
-		return -1;
-	}
-	if(ret == -1){
-		free(_pathLen);
-		return SERVER_ERROR;
-	}
-
-	int pathLen = atoi(_pathLen);
-
-	free(_pathLen);
-	
-	
-	//leggo pathname 
-	char* path = calloc(pathLen+1,1);
-	chk_null(path,SERVER_ERROR)
-
-
-	ret = readn(fd,path,pathLen);
-
-	if(ret == 0){
-		clientExit(fd);
-		free(path);
-		return -1;
-	}
-	if(ret == -1){
-		free(path);
-		return SERVER_ERROR;
-	}	
-
-	*pathname = path;
-	
-	return 0;
-}
-
-int get_flags(int fd, int *flags){
-	int flags_ = 0;
-	int ret = readn(fd,&flags_,FLAG_SIZE);
-	if(ret == -1){
-		return -1;
-	}
-	if(ret == 0){
-		errno = ECONNRESET;
-		return -1;
-	}
-	*flags = flags_ - '0';
-
-	return 0;
-}
-
-int get_file(int fd, size_t* size, void** content){
-
-	char* fileSize = calloc(MAX_FILESIZE_LEN+1,1);
-	chk_null(fileSize,SERVER_ERROR)
-	//leggo dimensioneFile
-	int ret = readn(fd,fileSize,MAX_FILESIZE_LEN);
-	if(ret == 0){
-		clientExit(fd);
-		free(fileSize);
-		return -1;
-	}
-	if(ret == -1){
-		free(fileSize);
-		return SERVER_ERROR;
-	}
-  
-	size_t size_ = 0;	
-
-	if(isNumber(fileSize,(long*)&size_) != 0){
-		free(fileSize);
-		return BAD_REQUEST;
-	}
-	free(fileSize);
-
-	void* content_ = (void*) malloc(size_);
-	chk_null(content_,SERVER_ERROR)
-
-	//leggo contenuto file
-	ret = readn(fd,content_,size_);
-
-	if(ret == 0){
-		errno = ECONNRESET;
-		free(content_);
-		return -1;
-	}
-	if(ret == -1){
-		free(content_);
-		return SERVER_ERROR;
-	}
-
-
-	*size = size_;
-	*content = content_;
-
-	return 0;
-	
-}
-
-int open_file(fsT* storage, int fd){
-
-	int ret = 0;
-
-	char* pathname = NULL;
-	
-	// leggo il pathname del file da aprire
-	if((ret = get_pathname(fd,&pathname)) != 0){
-		return ret;
-	}
-
-	int flags = 0;
-
-	//leggo i flags
-	if((ret = get_flags(fd, &flags)) != 0){
-		free(pathname);
-		return ret;
-	}
-	
-	
 
 	short int create = IS_O_CREATE_SET(flags), lock = IS_O_LOCK_SET(flags);
 
+	// lock dello storage
+	LOCK(&(storage->smux));
 
 	fT* fPtr = icl_hash_find(storage->ht,pathname);
-
+	
 	if(fPtr){ // se il file è già nel file storage
 		free(pathname);
 		if(create){
 			//fprintf(stderr,"file esistente\n");
+				UNLOCK(&(storage->smux));
 				return FILE_EXISTS;
 		}
 		if(lock){
 			// LOCK
+			
 		}	
-	
-	}else{ // il file deve essere creato
-		if(!create){
-			//fprintf(stderr,"flag O_CREATE non specificato\n");
-
-			return FILE_NOT_EXISTS;
-		}
-		// LOCK
-		// controllo che ci sia spazio a sufficienza 		
-		if((storage->currFileNum+1) > storage->maxFileNum){
-			// non importa che il file sia vuoto o meno
-			fT* ef = dequeue(storage->filesQueue);
-			chk_null(ef,SERVER_ERROR)
-
-			// rimuovo il file dallo storage senza inviarlo al client
-			printf("rimosso: %s\n",ef->pathname);
-			// rimuovo dalla hash table
-			if(icl_hash_delete(storage->ht,ef->pathname,free,freeFile) == -1)
-				return SERVER_ERROR; 
-
-		}
-	
-		chk_null_op(fPtr = malloc(sizeof(fT)),free(pathname),SERVER_ERROR)
-		
-		fPtr->pathname = pathname;
-		
-
-		fPtr->size = 0;
-		fPtr->content = NULL;
-		
-
-		chk_null_op(icl_hash_insert(storage->ht,pathname,fPtr),free(pathname),SERVER_ERROR)
-
-		// inserisco in coda per politica rimpiazzamento
-		if(enqueue(storage->filesQueue,fPtr) != 0){
+		if(enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0){
+			UNLOCK(&(storage->smux));
 			return SERVER_ERROR;
 		}
 
-		storage->currFileNum++;
+
+	}else{ // il file deve essere creato
+		if(!create){
+			//fprintf(stderr,"flag O_CREATE non specificato\n");
+			UNLOCK(&(storage->smux));
+			return FILE_NOT_EXISTS;
+		}
+		
+		
+	
+		// creo file (vuoto) sullo storage
+		if(store_insert(storage,fdClient,pathname) != 0){
+			UNLOCK(&(storage->smux));
+			return SERVER_ERROR;
+		}
+
 	}
+
+	UNLOCK(&(storage->smux));
 	
 	return SUCCESS;
 }
 
+int close_file(fsT* storage, int fdClient, char* pathname){
 
-int write_append_file(fsT* storage,int fd, int mode){
+	// lock dello storage
+	LOCK(&(storage->smux));
 
-	int ret = 0;
-	char* pathname = NULL;
-	
-	// leggo il pathname del file da scrivere
-	if((ret = get_pathname(fd,&pathname)) != 0){
-		return ret;
+	fT* fPtr = icl_hash_find(storage->ht,pathname);
+	if(!fPtr){
+		UNLOCK(&(storage->smux));
+		return FILE_NOT_EXISTS;
 	}
+	
+	LOCK(&(fPtr->ordering))
+	LOCK(&(fPtr->mux))
+	UNLOCK(&(storage->smux));
+
+
+	// aspetto mentre qualcuno legge/scrive
+
+	while(fPtr->activeReaders || fPtr->activeWriters)
+        WAIT(&(fPtr->go),&(fPtr->mux));
+    
+	fPtr->activeWriters++;
+
+	UNLOCK(&(fPtr->ordering))
+	UNLOCK(&(fPtr->mux))
+	
+	// se il client ha aperto il file rimuovo il suo fd
+	if(removeFromQueue(fPtr->fdopen,CAST_FD(fdClient),0) == 1){
+		UNLOCK(&(fPtr->ordering))
+		UNLOCK(&(fPtr->mux))
+        return NOT_OPENED;
+	}
+
+	LOCK(&(fPtr->mux))
+
+	fPtr->activeWriters--;
+
+	SIGNAL(&(fPtr->go))
+
+	UNLOCK(&(fPtr->mux))
+
+	return SUCCESS;
+}
+
+
+int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected){
+
+	LOCK(&(storage->smux))
 
 	fT* fPtr = icl_hash_find(storage->ht,pathname);
 	if(!fPtr){
 		//file non ancora creato
-		free(pathname);
+		UNLOCK(&(storage->smux))
 		return FILE_NOT_EXISTS;
 	}
-	free(pathname);
 
-	size_t size = 0;
-	void* content = NULL;
-
-	// leggo file
-	if((ret = get_file(fd,&size,&content)) != 0){
-		return ret;
-	}
 	
+
+
 	if(size > storage->maxCapacity){
 		/* anche rimuovendo tutti i file attualmente presenti 
-		non si siuscirebbe a memorizzare quello inviato dal client
+		non si riuscirebbe a memorizzare quello inviato dal client
 		*/
+		if(store_remove(storage,fPtr,1) != 0){
+			return SERVER_ERROR;
+		}
+		UNLOCK(&(storage->smux))
 		return FILE_TOO_LARGE;
 	}
 
-	int ejected = 0;
-	// non posso scrivere il file fin quando non c'e' spazio libero
+
+	 
+
 	while(size + storage->currCapacity > storage->maxCapacity){
-	
-		fT* ef = eject_file(storage->filesQueue,fPtr->pathname);
-		chk_null_op(ef,free(content),FILE_TOO_LARGE)
-
-		// lo invio al client e lo rimuovo dallo storage
-		long resLen = sizeof(char) + sizeof(int) + strlen(ef->pathname) + MAX_FILESIZE_LEN + ef->size +1;
-		char* res = calloc(resLen,1);
-		chk_null(res,SERVER_ERROR);
-		snprintf(res,resLen,"%d%4d%s%010ld",SENDING_FILE,(int)strlen(ef->pathname),ef->pathname,ef->size);
-		memcpy((res + strlen(res)),ef->content,ef->size);
 		
-		if(writen(fd,res,resLen-1) == -1){
-				perror("writen");
-				free(res);
-				return -1;
-			}
-		free(res);
-
-		storage->currCapacity -= ef->size;
-		ejected++;
-		char* ejpath = ef->pathname;
-		// rimuovo dalla coda di rimpiazzamento
-		if(removeFromQueue(storage->filesQueue,ef) != 0)
-			return SERVER_ERROR; 
-
-		// rimuovo dalla hash table
-		if(icl_hash_delete(storage->ht,ejpath,free,NULL) == -1)
-			return SERVER_ERROR; 
-
-	}
-	if(ejected){
-		char resBuf[RESPONSE_CODE_SIZE+1] = "";
-		snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",END_SENDING_FILE);
-		// invio risposta al client
-		ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return -1)
-	}
-
-	if(mode == 0){ // se modalita' Write
-		fPtr->size = size;
-		fPtr->content = content;
-	}else{ // modalita' append
+		fT* ef = eject_file(storage->filesQueue,fPtr->pathname);
+		if(!ef){
+			UNLOCK(&(storage->smux))
+			return FILE_TOO_LARGE;
+		}
+		
+		// lo inserisco in coda ai file da espellere e lo tolgo dallo store senza fare la free
+		if(enqueue(ejected,ef) != 0 || store_remove(storage,ef,0) != 0){
+			UNLOCK(&(storage->smux))
+			return SERVER_ERROR;
+		}
 	
-		fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
-		chk_null_op(fPtr->content,free(content),SERVER_ERROR)
-
-		memcpy(fPtr->content+fPtr->size,content,size);
-		fPtr->size += size;
-		free(content);
+		storage->currCapacity -= ef->size;
+		
+		
 	}
+
+	LOCK(&(fPtr->ordering))
+	LOCK(&(fPtr->mux))
+
+	// non posso eseguire scritture in contemporanea ad altri scrittori/lettori
+
+	while(fPtr->activeReaders || fPtr->activeWriters)
+		WAIT(&(fPtr->go),&(fPtr->mux))
+
+	fPtr->activeWriters++; // 1
+
+	UNLOCK(&(fPtr->ordering))
+	UNLOCK(&(fPtr->mux))
+
+	// in ogni caso devo appendere al file
+	fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
+	if(!(fPtr->content)){
+		UNLOCK(&(storage->smux))
+		return SERVER_ERROR;
+	}
+
+	memcpy(fPtr->content+fPtr->size,content,size);
+	fPtr->size += size;
 	storage->currCapacity += size;
+	
+	LOCK(&(fPtr->mux))
+
+	fPtr->activeWriters--; // 0
+	
+	// segnalo ad eventuali scrittori/lettori in attesa che possono proseguire
+	SIGNAL(&(fPtr->go))
+
+	UNLOCK(&(fPtr->mux))
+
+
+	UNLOCK(&(storage->smux))
+	
 	
 	return SUCCESS;
 
 }
+
+
+
+int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** content){
+
+
+	LOCK(&(storage->smux))
+
+	fT* fPtr = icl_hash_find(storage->ht,pathname);
+	if(!fPtr){
+		UNLOCK(&(storage->smux))
+		return FILE_NOT_EXISTS;
+	}
+
+	// paradigma lettori/scrittori 
+
+	LOCK(&(fPtr->ordering))
+	LOCK(&(fPtr->mux))
+
+	UNLOCK(&(storage->smux))
+
+
+	if((fPtr->fdlock && fPtr->fdlock != fdClient) || !findQueue(fPtr->fdopen,CAST_FD(fdClient))){
+		UNLOCK(&(fPtr->ordering))
+		UNLOCK(&(fPtr->mux))
+        return NOT_OPENED;
+    }
+		//printf("sugooooo %d\n",fPtr->fdopen->head->data);
+	
+	if(fPtr->size == 0){ //file vuoto
+		UNLOCK(&(fPtr->ordering))
+		UNLOCK(&(fPtr->mux))
+		return EMPTY_FILE;
+	}
+
+	/* fin quando ci sono degli scrittori sul file 
+		mi metto in attesa rilasciando la lock su MUX */
+
+	while(fPtr->activeWriters){
+		WAIT(&(fPtr->go),&(fPtr->mux))
+	}
+
+	fPtr->activeReaders++;
+
+	// permetto ad altri lettori/scrittori di avanzare 
+	UNLOCK(&(fPtr->ordering))
+	UNLOCK(&(fPtr->mux))
+
+	// leggo file
+
+	// copio size e content 
+
+	*size = fPtr->size;
+	
+	chk_null(*content = (void*)malloc(*size),SERVER_ERROR)
+	memcpy(*content,fPtr->content,*size);
+
+
+	LOCK(&(fPtr->mux))
+
+	fPtr->activeReaders--;
+	if(fPtr->activeReaders == 0)
+		SIGNAL(&(fPtr->go))
+	
+	UNLOCK(&(fPtr->mux))
+
+
+	return SUCCESS;
+
+}
+
+int read_n_file(fsT* storage,int n,int fdClient, queue* ejected){
+
+	
+	LOCK(&(storage->smux))
+
+	if(n <= 0 || n >= storage->currFileNum)
+		n = storage->currFileNum;
+
+	data* curr = storage->filesQueue->head;
+	fT* fPtr = NULL, *ef = NULL;
+	
+	while(n && curr){
+		
+		fPtr = (fT*)(curr->data);
+
+		
+		// faccio copia del file
+		chk_null(ef = fileCopy(fPtr),SERVER_ERROR)
+		
+		// lo inserisco in coda ai file da espellere (inviare)
+		if(enqueue(ejected,ef) != 0){
+			// UNLOCK(&(storage->smux))
+			return SERVER_ERROR;
+		}
+		curr = curr->next;
+		n--;
+	}
+
+	UNLOCK(&(storage->smux))
+
+	return SUCCESS;
+
+}
+
+
+
+int remove_file(fsT* storage, int fdClient, char* pathname){
+	
+	// lock dello storage
+	LOCK(&(storage->smux));
+
+	fT* fPtr = icl_hash_find(storage->ht,pathname);
+	if(!fPtr){
+		UNLOCK(&(storage->smux));
+		return FILE_NOT_EXISTS;
+	}
+
+	if(fPtr->fdlock != fdClient){
+		UNLOCK(&(storage->smux));
+		return NOT_LOCKED;
+	}
+
+	if(store_remove(storage,fPtr,1) != 0){
+		UNLOCK(&(storage->smux));
+		return SERVER_ERROR;
+	}
+	
+	UNLOCK(&(storage->smux));
+
+	return SUCCESS;
+		
+}
+
+int lock_file(fsT* storage, int fd){
+	
+	char* pathname = NULL;
+	
+	// leggo il pathname del file da lockare
+	//chk_neg1(get_pathname(fd,&pathname),-1)
+
+	// lock dello storage
+	LOCK(&(storage->smux));
+
+	fT* fPtr = icl_hash_find(storage->ht,pathname);
+	if(!fPtr){
+		UNLOCK(&(storage->smux));
+		free(pathname);
+		return FILE_NOT_EXISTS;
+	}
+
+	// chk_neg1(store_remove(storage,fPtr->),SERVER_ERROR)
+
+	free(pathname);
+	
+	UNLOCK(&(storage->smux));
+
+	return SUCCESS;
+		
+}
+
+
+
+
+int store_insert(fsT* storage, int fdClient, char* pathname){
+
+	// controllo che ci sia spazio a sufficienza 		
+	if((storage->currFileNum+1) > storage->maxFileNum){
+		// non importa che il file sia vuoto o meno
+		fT* ef = dequeue(storage->filesQueue);
+		chk_null_op(ef,free(pathname),SERVER_ERROR)
+
+		// rimuovo il file dallo storage senza inviarlo al client
+		// printf("rimosso: %s\n",ef->pathname);
+		// rimuovo dalla hash table
+		chk_neg1_op(icl_hash_delete(storage->ht,ef->pathname,free,freeFile),free(pathname),SERVER_ERROR)
+	}
+	
+	fT* fPtr = NULL;
+	chk_null_op(fPtr = malloc(sizeof(fT)),free(pathname),SERVER_ERROR)
+		
+	ec_n(pthread_mutex_init(&(fPtr->mux),NULL),0,"file mux init",return SERVER_ERROR)
+	ec_n(pthread_mutex_init(&(fPtr->ordering),NULL),0,"file ordering init",return SERVER_ERROR)
+	
+	ec_n(pthread_cond_init(&(fPtr->go),NULL),0,"file ordering init",return SERVER_ERROR)
+
+	fPtr->activeReaders = 0;
+	fPtr->activeWriters  = 0;
+	fPtr->pathname = pathname;
+	fPtr->size = 0;
+	fPtr->content = NULL;
+	
+	if(!(fPtr->fdopen = createQueue(free,NULL))){
+		free(pathname);
+		free(fPtr);
+	}
+
+	if(enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0){
+			UNLOCK(&(storage->smux));
+			return SERVER_ERROR;
+		}
+
+	if(icl_hash_insert(storage->ht,pathname,fPtr) == NULL || enqueue(storage->filesQueue,fPtr) != 0){
+		free(pathname);
+		free(fPtr);
+		return SERVER_ERROR;
+
+	}
+	
+
+	storage->currFileNum++;
+
+	return 0;
+}
+
+
+
+
+
+
+
+
+int store_remove(fsT* storage, fT* fPtr, int freeData){
+	char* rmpath = fPtr->pathname;
+	// rimuovo dalla coda di rimpiazzamento
+	if(removeFromQueue(storage->filesQueue,fPtr,freeData) != 0)
+		return -1; 
+
+	// rimuovo dalla hash table
+
+	if(freeData){
+		if(icl_hash_delete(storage->ht,rmpath,free,NULL) == -1)
+			return -1; 
+	}else{
+		if(icl_hash_delete(storage->ht,rmpath,NULL,NULL) == -1)
+			return -1;
+	}
+
+	storage->currFileNum--;
+
+	return 0; // file rimosso con successo
+}
+
+
+
+
+
+fT* fileCopy(fT* fPtr){
+	fT* cp = NULL;
+
+	chk_null(cp = malloc(sizeof(fT)),NULL)
+
+	cp->size = fPtr->size;
+	if(!(cp->pathname = strndup(fPtr->pathname,strlen(fPtr->pathname))) || !(cp->content = (void*)malloc(cp->size))){
+		if(cp->pathname)
+			free(cp->pathname);
+
+		if(cp->content)
+			free(cp->content);
+
+		free(cp);
+		
+		return NULL;
+	}
+		
+	memcpy(cp->content,fPtr->content,cp->size);
+
+	return cp;
+}
+
 
 fT* eject_file(queue* fq,char* pathname){
 	
@@ -357,164 +531,6 @@ fT* eject_file(queue* fq,char* pathname){
 
 
 
-int read_file(fsT* storage,int fd){
-
-	int ret = 0;
-	char* pathname = NULL;
-	
-	// leggo il pathname del file da leggere
-	if((ret = get_pathname(fd,&pathname)) != 0){
-		return ret;
-	}
-
-	fT* fPtr = icl_hash_find(storage->ht,pathname);
-	
-	if(fPtr == NULL){
-		free(pathname);
-		return FILE_NOT_EXISTS;
-	}
-
-	if(fPtr->size == 0){ //file vuoto
-		free(pathname);
-		return EMPTY_FILE;
-	}
-
-	free(pathname);
-	
-	// mando SENDING_FILE + size + file
-	long resLen = sizeof(char) + MAX_FILESIZE_LEN + fPtr->size +1;
-	char* res = calloc(resLen,1);
-	if(!res)
-		return SERVER_ERROR;
-	
-
-	snprintf(res,resLen,"%d%010ld",SENDING_FILE,fPtr->size); // fsize 10 char max
-	
-	memcpy((res + strlen(res)),fPtr->content,fPtr->size);
-	
-	
-	if(writen(fd,res,resLen-1) == -1){
-		perror("writen");
-		free(res);
-		return -1;
-	}
-
-	return SUCCESS;
-
-}
-
-int read_n_file(fsT* storage,int fd){
-
-	// leggo numero file da leggere
-	char* buf = calloc(sizeof(int)+1,1);
-	chk_null(buf,SERVER_ERROR)
-		
-	int ret = 0;
-
-	ret = readn(fd,buf,sizeof(int));
-	if(ret == 0){
-		clientExit(fd);
-		free(buf);
-		return -1;
-	}
-	if(ret == -1){
-		free(buf);
-		return SERVER_ERROR;
-	}
-
-	
-	
-	int n = atoi(buf);
-
-	free(buf);
-
-	if(n <= 0 || n >= storage->currFileNum)
-		n = storage->currFileNum;
-
-	data* curr = storage->filesQueue->head;
-	fT* fPtr;
-	
-	long resLen = 0;
-	char* res = NULL;
-
-	while(n && curr){
-		
-		
-		fPtr = (fT*)(curr->data);
-		
-		if(fPtr->size == 0){ //file vuoto
-			// mando solo il pathname
-
-			resLen = sizeof(char) + sizeof(int) + strlen(fPtr->pathname) + 1;
-		
-			res = calloc(resLen,1);
-			chk_null(res,SERVER_ERROR);
-
-			snprintf(res,resLen,"%d%4d%s",EMPTY_FILE,(int)strlen(fPtr->pathname),fPtr->pathname);	
-
-		}else{
-			resLen = sizeof(char) + sizeof(int) + strlen(fPtr->pathname) + MAX_FILESIZE_LEN + fPtr->size +1;
-		
-			res = calloc(resLen,1);
-			chk_null(res,SERVER_ERROR);
-
-			snprintf(res,resLen,"%d%4d%s%010ld",SENDING_FILE,(int)strlen(fPtr->pathname),fPtr->pathname,fPtr->size);
-			memcpy((res + strlen(res)),fPtr->content,fPtr->size);
-		}
-
-		if(writen(fd,res,resLen-1) == -1){
-				perror("writen");
-				free(res);
-				return -1;
-			}
-		free(res);
-		curr = curr->next;
-		n--;
-	}
-
-
-	return END_SENDING_FILE;
-
-}
-
-
-
-int remove_file(fsT* storage, int fd){
-	
-	char* pathname = NULL;
-	
-	// leggo il pathname del file da cancellare
-	chk_neg1(get_pathname(fd,&pathname),-1)
-
-
-	fT* fPtr = icl_hash_find(storage->ht,pathname);
-	chk_null_op(fPtr,free(pathname),FILE_NOT_EXISTS);
-
-	// rimuovo dalla coda di rimpiazzamento
-	if(removeFromQueue(storage->filesQueue,fPtr) != 0)
-		return FILE_NOT_EXISTS; 
-
-	// rimuovo dalla hash table
-	if(icl_hash_delete(storage->ht,pathname,free,NULL) == -1)
-		return FILE_NOT_EXISTS; 
-	
-
-	free(pathname);
-
-	
-
-	storage->currFileNum--;
-	
-
-	return SUCCESS;
-		
-}
-
-
-
-
-
-
 
 void freeFile(void* fptr){
 	fT* fPtr = fptr;
@@ -525,6 +541,9 @@ void freeFile(void* fptr){
 	}
 	return;
 }
+
+
+
 
 int cmpFile(void* f1, void* f2){
 	return (strncmp(((fT*)f1)->pathname, ((fT *)f2)->pathname, UNIX_PATH_MAX) == 0) ? 1 : 0;
