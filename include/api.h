@@ -28,6 +28,7 @@
 
 // a = arg r = retvalue  
 // nel caso di RECIVED_FILE op funge da bytes del file
+	//	fprintf(stdout,"PID: %d ", getpid());
 #define PRINTER(op,a,r)  \
 	if(PRINTS){\
 		switch(r){\
@@ -51,6 +52,9 @@
 			break;\
 			case FILE_TOO_LARGE:\
 				fprintf(stdout,"%s : %s : FILE TROPPO GRANDE\n",op,a);\
+			break;\
+			case NOT_LOCKED:\
+				fprintf(stdout,"%s : %s : NESSUNA LOCK SUL FILE\n",op,a);\
 			break;\
 			default:;break;\
 		}\

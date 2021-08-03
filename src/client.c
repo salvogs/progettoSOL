@@ -95,6 +95,12 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 					if(writeFile(absoluteName,dirname) == 0){
 						if(limited)
 							(*n)--;
+						if(closeFile(absoluteName) != 0){
+							if(errno){
+								perror("closeFile");
+								return 1;
+							}
+						}	
 					}else if(errno){
 						closedir(d);
 						perror("writeFile");
@@ -116,7 +122,12 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 						if(appendToFile(absoluteName,content,size,dirname) == 0){
 							if(limited)
 								(*n)--;
-							//closefile
+							if(closeFile(absoluteName) != 0){
+								if(errno){
+									perror("closeFile");
+									return 1;
+								}
+							}
 						}else if(errno){
 							perror("appendToFile");
 							free(content);
@@ -217,7 +228,12 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 					//adesso bisogna inviare al server il contenuto del file
 					if(writeFile(pathname,dirname) == 0){
 
-						//closefile
+						if(closeFile(pathname) != 0){
+							if(errno){
+								perror("closeFile");
+								return 1;
+							}
+						}
 					}else if(errno){
 						perror("writeFile");
 						free(pathname);
@@ -237,7 +253,12 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 					if(appendToFile(pathname,content,size,dirname) == 0){
 						
-						//closefile
+						if(closeFile(pathname) != 0){
+							if(errno){
+								perror("closeFile");
+								return 1;
+							}
+						}
 					}else if(errno){
 						perror("appendToFile");
 						free(content);
@@ -290,6 +311,12 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 						if(buf)
 							free(buf);
 
+						if(closeFile(path) != 0){
+							if(errno){
+								perror("closeFile");
+								return 1;
+							}
+						}
 					}else if(errno){
 							perror("readFile");
 							return 1;
@@ -416,7 +443,7 @@ int main(int argc, char* argv[]){
 							finish = 1;
 							continue;
 						}
-						removeFromHead(args); //rimuovo il -D
+						removeFromHead(args,1); //rimuovo il -D
 					}
 				}
 				if(writeHandler(op->opt,op->arg,dirname,&reqTime) != 0)
@@ -432,7 +459,7 @@ int main(int argc, char* argv[]){
 							finish = 1;
 							continue;
 						}
-						removeFromHead(args); //rimuovo il -D
+						removeFromHead(args,1); //rimuovo il -D
 					}
 				}
 				if(writeHandler(op->opt,op->arg,dirname,&reqTime) != 0)
@@ -455,7 +482,7 @@ int main(int argc, char* argv[]){
 							finish = 1;
 							continue;
 						}
-						removeFromHead(args); //rimuovo il -d
+						removeFromHead(args,1); //rimuovo il -d
 					}
 				}
 				if(readHandler(op->opt,op->arg,dirname,&reqTime) != 0)
@@ -477,7 +504,7 @@ int main(int argc, char* argv[]){
 							finish = 1;
 							continue;
 						}
-						removeFromHead(args); //rimuovo il -d
+						removeFromHead(args,1); //rimuovo il -d
 					}
 				}
 				if(readHandler(op->opt,op->arg,dirname,&reqTime) != 0)

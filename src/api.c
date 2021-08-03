@@ -122,7 +122,7 @@ int closeFile(const char* pathname){
 	snprintf(req,reqLen,"%d%4d%s",CLOSE_FILE,(int)strlen(pathname),pathname);
 	//printf("reqLen: %d\n req: %s\n",reqLen,req);
 	
-
+		
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
 		//perror("writen");
 		free(req);
@@ -193,10 +193,10 @@ int writeFile(const char* pathname, const char* dirname){
 		response = getResponseCode(FD_CLIENT);	
 	}
 	
-	// leggo risposta della write
-	if(response == END_SENDING_FILE){
-		response = getResponseCode(FD_CLIENT);
-	}
+	// // leggo risposta della write
+	// if(response == END_SENDING_FILE){
+	// 	response = getResponseCode(FD_CLIENT);
+	// }
 	
 	PRINTER("WRITE FILE",pathname,response)
 	if(response == SUCCESS){
@@ -246,10 +246,10 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 		response = getResponseCode(FD_CLIENT);	
 	}
 	
-	// leggo risposta della write
-	if(response == END_SENDING_FILE){
-		response = getResponseCode(FD_CLIENT);
-	}
+	// // leggo risposta della write
+	// if(response == END_SENDING_FILE){
+	// 	response = getResponseCode(FD_CLIENT);
+	// }
 	
 	PRINTER("APPEND TO FILE",pathname,response)
 	if(response == SUCCESS){
@@ -319,7 +319,6 @@ int readFile(const char* pathname, void** buf, size_t* size){
 
 
 	if(response == SENDING_FILE){
-		puts("quii");
 		// mi aspetto: size del file letto, file letto
 		if(getFile(&fileSize,&content,NULL) != 0)
 			return -1;
@@ -328,7 +327,7 @@ int readFile(const char* pathname, void** buf, size_t* size){
 	*size = fileSize;
 	*buf = content;
 	
-	PRINTER("READ FILE",pathname,response)
+	PRINTER("READ FILE",pathname,SUCCESS)
 
 	
 	PRINT(fprintf(stdout,"Letti: %ld bytes\n",*size))
@@ -356,7 +355,7 @@ int readNFiles(int N, const char* dirname){
 	
 	int response = getResponseCode(FD_CLIENT);
 	
-	if(response != SUCCESS && response != EMPTY_FILE && response != SENDING_FILE && response != END_SENDING_FILE){
+	if(response != SUCCESS && response != EMPTY_FILE && response != SENDING_FILE){
 		//PRINTER("READ FILE",pathname,response)
 		
 		return -1;
@@ -376,7 +375,7 @@ int readNFiles(int N, const char* dirname){
 	}
 	
 	
-	if(response == END_SENDING_FILE){
+	if(response == SUCCESS){
 		PRINT(fprintf(stdout,"Letti: %d files e %ld bytes\n",readCounter,bytes))
 		return readCounter;
 	}else{
@@ -401,6 +400,7 @@ int sendRequest(int fd, void* req, int len){
 int getResponseCode(int fd){
 	int res = 0;
 	int ret = readn(FD_CLIENT,&res,RESPONSE_CODE_SIZE);\
+	
 	if(ret == -1){\
 		return -1;\
 	}\
@@ -547,6 +547,59 @@ int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCo
 	
 	*bytes += size;
 	(*readCounter)++;
+
+	return 0;
+}
+
+
+int lockFile(const char* pathname){
+	// lockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen,1);
+	chk_null(req,-1)
+
+	snprintf(req,reqLen,"%d%4d%s",LOCK_FILE,(int)strlen(pathname),pathname);
+	
+	
+	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
+	
+
+	int response = getResponseCode(FD_CLIENT);
+		
+	PRINTER("LOCK FILE",pathname,response)
+
+
+	if(response != SUCCESS){
+		return -1;
+	}
+
+	return 0;
+}
+
+int unlockFile(const char* pathname){
+	// unlockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen,1);
+	chk_null(req,-1)
+
+	snprintf(req,reqLen,"%d%4d%s",UNLOCK_FILE,(int)strlen(pathname),pathname);
+	
+	
+	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
+	
+
+	int response = getResponseCode(FD_CLIENT);
+		
+	PRINTER("UNLOCK FILE",pathname,response)
+
+
+	if(response != SUCCESS){
+		return -1;
+	}
 
 	return 0;
 }
