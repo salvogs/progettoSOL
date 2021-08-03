@@ -91,7 +91,7 @@ void* dequeue(queue* q){
 return: 1 no elementi in coda
 		0 successo
 */
-int removeFromHead(queue* q){
+int removeFromHead(queue* q, int freeData){
 
 	if(isQueueEmpty(q))
 		return 1;
@@ -99,7 +99,9 @@ int removeFromHead(queue* q){
 	data* newHead = q->head->next;
 	if(newHead == NULL){
 		q->ndata--;
-		q->freeFun(q->head->data);
+		if(freeData){
+			q->freeFun(q->head->data);
+		}
 		free(q->head);
 		q->head = NULL;
 		q->tail = NULL;
@@ -107,8 +109,12 @@ int removeFromHead(queue* q){
 	}
 
 	newHead->prev = NULL;
-	q->freeFun(q->head->data);
+
+	if(freeData){
+		q->freeFun(q->head->data);
+	}
 	free(q->head);
+	
 	q->head = newHead;
 	q->ndata--;
 
@@ -117,7 +123,7 @@ int removeFromHead(queue* q){
 
 // cerca elem nella coda e lo rimuove
 
-int removeFromQueue(queue* q, void* elem){
+int removeFromQueue(queue* q, void* elem, int freeData){
 	if(isQueueEmpty(q))
 		return 1;
 	
@@ -131,7 +137,7 @@ int removeFromQueue(queue* q, void* elem){
 
 	//se elem e' la testa
 	if(curr == q->head){
-		return removeFromHead(q);
+		return removeFromHead(q,freeData);
 	}
 	data* prev = curr->prev;
 	data* succ = curr->next;
@@ -145,12 +151,17 @@ int removeFromQueue(queue* q, void* elem){
 		succ->prev = prev;
 	}
 
-	q->freeFun(curr->data);
+	if(freeData){
+		q->freeFun(curr->data);
+	}
 	free(curr);
 	q->ndata--;
 
 	return 0;
 }
+
+
+
 
 void* findQueue(queue* q,void* elem){
 	if(isQueueEmpty(q))

@@ -28,9 +28,9 @@ int enqueue(queue* q, void* data);
 
 void* dequeue(queue* q);
 
-int removeFromHead(queue* q);
+int removeFromHead(queue* q, int freeData);
 
-int removeFromQueue(queue* q, void* elem);
+int removeFromQueue(queue* q, void* elem, int freeData);
 
 void* findQueue(queue* q,void* elem);
 
