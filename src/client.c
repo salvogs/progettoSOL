@@ -354,7 +354,36 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 	return 0;
 }
 
+int lockUnlockHandler(char opt,char* args,struct timespec* reqTime){
+	char* save;
 
+	char* path;
+	path = strtok_r(args,",",&save);
+
+	while(path){
+		if(opt == 'l'){
+			if(lockFile(path) != 0){ 
+				if(errno){
+					perror("lockFile");
+					return 1;
+				} 
+			}
+		}else{ // unlock
+			if(unlockFile(path) != 0){ 
+				if(errno){
+					perror("unlockFile");
+					return 1;
+				} 
+			}
+		}
+		
+	
+		path = strtok_r(NULL,",",&save);
+		nanosleep(reqTime,NULL);
+	}
+
+	return 0;
+}
 
 
 
@@ -514,11 +543,11 @@ int main(int argc, char* argv[]){
 			break;
 
 			case 'l':
-				fprintf(stdout,"lock su %s\n",op->arg);
+				lockUnlockHandler(op->opt,op->arg,&reqTime);
 			break;
 
 			case 'u':
-				fprintf(stdout,"unlock su %s\n",op->arg);
+				lockUnlockHandler(op->opt,op->arg,&reqTime);
 			break;
 
 			case 'c':

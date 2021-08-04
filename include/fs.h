@@ -42,7 +42,7 @@ typedef struct{
 
 	//pthread_mutex_t muxfd;
 	int fdlock;	
-
+	int fdwrite;
 	queue* fdopen;
 }fT;
 
@@ -67,9 +67,9 @@ int read_n_file(fsT* storage,int n,int fdClient, queue* ejected);
 
 int remove_file(fsT* storage, int fdClient, char* pathname);
 
-int lock_file(fsT* storage, int fd);
+int lock_file(fsT* storage, int fdClient, char* pathname);
 
-int unlock_file(fsT* storage, int fd);
+int unlock_file(fsT* storage, int fdClient, char* pathname);
 
 
 void freeFile(void* fptr);
@@ -84,6 +84,6 @@ fT* fileCopy(fT* fPtr);
 
 int store_remove(fsT* storage, fT* fPtr, int freeFile);
 
-int store_insert(fsT* storage, int fdClient, char* pathname);
+int store_insert(fsT* storage, int fdClient, char* pathname,int lock);
 
 #endif

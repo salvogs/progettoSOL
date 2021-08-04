@@ -23,7 +23,7 @@
 */
 
 #define OP_REQUEST_SIZE 1
-#define RESPONSE_CODE_SIZE 1
+#define RESPONSE_CODE_SIZE 2
 #define PATHNAME_LEN 4
 #define FLAG_SIZE 1
 #define MAX_FILESIZE_LEN 10
@@ -36,6 +36,8 @@
 #define READ_FILE 5
 #define READ_N_FILE 6
 #define REMOVE_FILE 7
+#define LOCK_FILE 8
+#define UNLOCK_FILE 9
 // flag openFile
 
 #define O_CREATE 1
@@ -50,9 +52,12 @@
 #define EMPTY_FILE 4
 #define BAD_REQUEST 5
 #define SENDING_FILE 6
-#define END_SENDING_FILE 7
-#define RECIVED_FILE 8
-#define FILE_TOO_LARGE 9
+#define FILE_TOO_LARGE 7
+#define NOT_LOCKED 8
+#define LOCKED 9
+#define NOT_OPENED 10
+// #define RECIVED_FILE 7
+//#define END_SENDING_FILE 7
 
 
 #endif

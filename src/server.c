@@ -205,9 +205,9 @@ void* workerFun(){
 					if(ret == SERVER_ERROR){
 						perror("open file");
 					}
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 
 				//printf("dopo di openFile %d\n",storage->fileNum);
@@ -231,10 +231,10 @@ void* workerFun(){
 						perror("close file");
 					}
 
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
@@ -276,30 +276,14 @@ void* workerFun(){
 
 					}
 					
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
 			break;
-
-			// case APPEND_TO_FILE:{
-			// 	//ret = write_append_file(storage,fd,ejected); 
-				
-			// 	if(ret != -1){
-			// 		if(ret == SERVER_ERROR){
-			// 			perror("append to file");
-			// 		}			
-			// 		snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
-
-			// 		// invio risposta al client
-			// 		ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
-			// 	}
-				
-			// }
-			// break;
 
 			case READ_FILE:{
 				int ret = 0;
@@ -319,10 +303,10 @@ void* workerFun(){
 						perror("read file");
 					}	
 					
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta(errore) al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}else{
 					// mando SENDING_FILE + size + file
 	
@@ -352,10 +336,10 @@ void* workerFun(){
 						perror("remove file");
 					}
 
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
@@ -387,42 +371,56 @@ void* workerFun(){
 
 					}
 
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
 			break;
 
 			case LOCK_FILE:{
-				ret = lock_file(storage,fd); 
+				char* pathname = NULL;
+				// leggo il pathname del file da rimuovere
+				if(getPathname(fd,&pathname) != 0){
+					return NULL;
+				}
+
+
+				ret = lock_file(storage,fd,pathname); 
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
 						perror("lock file");
 					}			
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
 			break;
 
 			case UNLOCK_FILE:{
-				//ret = unlock_file(storage,fd); 
+				char* pathname = NULL;
+				// leggo il pathname del file da rimuovere
+				if(getPathname(fd,&pathname) != 0){
+					return NULL;
+				}
+
+
+				ret = unlock_file(storage,fd,pathname); 
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
 						perror("unlock file");
 					}			
-					snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
 				}
 				
 			}
@@ -430,9 +428,9 @@ void* workerFun(){
 
 			default:{
 				ret = BAD_REQUEST;
-				snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%d",ret);
+				// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 				// invio risposta al client
-				ec(writen(fd,resBuf,RESPONSE_CODE_SIZE),-1,"writen",return NULL);
+				ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL);
 			}
 		}
 	
@@ -563,14 +561,14 @@ int sendFile(int fd,char* pathname, size_t size, void* content){
 			res = calloc(resLen,1);
 			chk_null(res,SERVER_ERROR);
 
-			snprintf(res,resLen,"%d%4d%s",EMPTY_FILE,(int)strlen(pathname),pathname);
+			snprintf(res,resLen,"%2d%4d%s",EMPTY_FILE,(int)strlen(pathname),pathname);
 		}else{
 			resLen +=  MAX_FILESIZE_LEN + size;
 			res = calloc(resLen,1);
 			chk_null(res,SERVER_ERROR);
 
 
-			snprintf(res,resLen,"%d%4d%s%010ld",SENDING_FILE,(int)strlen(pathname),pathname,size);
+			snprintf(res,resLen,"%2d%4d%s%010ld",SENDING_FILE,(int)strlen(pathname),pathname,size);
 			memcpy((res + strlen(res)),content,size);
 		}
 
@@ -581,7 +579,7 @@ int sendFile(int fd,char* pathname, size_t size, void* content){
 		res = calloc(resLen,1);
 		chk_null(res,SERVER_ERROR);
 
-		snprintf(res,resLen,"%d%010ld",SENDING_FILE,size); // fsize 10 char max
+		snprintf(res,resLen,"%2d%010ld",SENDING_FILE,size); // fsize 10 char max
 		memcpy((res + strlen(res)),content,size);
 	}
 	

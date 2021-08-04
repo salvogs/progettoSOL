@@ -10,7 +10,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <sys/stat.h>
-
+#include <pthread.h>
 
 char *strndup(const char *s, size_t n);
 
@@ -48,6 +48,11 @@ char *strndup(const char *s, size_t n);
         return r;   \
     }       
 
+#define chk_1(s,r) \
+    if((s) == 1) \
+    {               \
+        return r;   \
+    }       
 
 
 #define chk_neg1(s,r) \
@@ -64,6 +69,20 @@ char *strndup(const char *s, size_t n);
     }       
 
     
+
+#define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
+	fprintf(stderr,"errore creazione thread\n"); \
+	exit(EXIT_FAILURE);}
+
+
+
+#define LOCK(l)      if (pthread_mutex_lock(l)!=0)        { printf("ERRORE FATALE lock\n"); exit(EXIT_FAILURE);}
+#define UNLOCK(l)    if (pthread_mutex_unlock(l)!=0)      { printf("ERRORE FATALE unlock\n"); exit(EXIT_FAILURE);}
+#define WAIT(c,l)    if (pthread_cond_wait(c,l)!=0)       { printf("ERRORE FATALE wait\n"); exit(EXIT_FAILURE);}
+#define SIGNAL(c)    if (pthread_cond_signal(c)!=0)       { printf("ERRORE FATALE signal\n"); exit(EXIT_FAILURE);}
+
+
+
 // ritorna
 //   0: ok
 //   1: non e' un numero

@@ -30,7 +30,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 				return -1;
 			}
 		
-			PRINT(fprintf(stdout,"Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",msec))
+			PRINT(fprintf(stdout,"PID:%d Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",getpid(),msec))
 			
 		}else{
 			return -1;
@@ -40,7 +40,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 	}
 
 	
-	PRINT(fprintf(stdout,"Connessione con il socket stabilita.\n"))
+	PRINT(fprintf(stdout,"PID:%d Connessione con il socket stabilita.\n",getpid()))
 	
 	
 	return 0;
@@ -57,7 +57,7 @@ int closeConnection(const char* sockname){
 
 	chk_neg1(close(FD_CLIENT),-1)
 
-	PRINT(fprintf(stdout,"Connessione chiusa.\n"))
+	PRINT(fprintf(stdout,"PID:%d Connessione chiusa.\n",getpid()))
 		
 	return 0;
 }
@@ -160,8 +160,8 @@ int writeFile(const char* pathname, const char* dirname){
 		//non faccio nemmeno richiesta al server
 		PRINTER("WRITE FILE",pathname,EMPTY_FILE)
 
-		if(PRINTS)
-			fprintf(stdout,"Scritti: %ld bytes\n",fsize);
+		PRINT_WRITE(fsize)
+	
 
 		return EMPTY_FILE;
 	}
@@ -200,7 +200,7 @@ int writeFile(const char* pathname, const char* dirname){
 	
 	PRINTER("WRITE FILE",pathname,response)
 	if(response == SUCCESS){
-		PRINT(fprintf(stdout,"Scritti: %ld bytes\n",fsize))
+		PRINT_WRITE(fsize)
 		return 0;
 	}
 	
@@ -215,8 +215,8 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 		//non faccio nemmeno richiesta al server
 		PRINTER("WRITE FILE",pathname,EMPTY_FILE)
 
-		if(PRINTS)
-			fprintf(stdout,"Scritti: %ld bytes\n",size);
+		
+		PRINT_WRITE(size)
 
 		return EMPTY_FILE;
 	}
@@ -253,7 +253,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 	
 	PRINTER("APPEND TO FILE",pathname,response)
 	if(response == SUCCESS){
-		PRINT(fprintf(stdout,"Scritti: %ld bytes\n",size))
+		PRINT_WRITE(size)
 		return 0;
 	}
 	
@@ -329,8 +329,8 @@ int readFile(const char* pathname, void** buf, size_t* size){
 	
 	PRINTER("READ FILE",pathname,SUCCESS)
 
+	PRINT_READ(*size)
 	
-	PRINT(fprintf(stdout,"Letti: %ld bytes\n",*size))
 	
 	return 0;
 
@@ -365,7 +365,7 @@ int readNFiles(int N, const char* dirname){
 	quando i file da leggere sono finiti response sara' END_SENDING_FILE
 	*/
 
-	size_t bytes = 0;;
+	size_t bytes = 0;
 	int readCounter = 0;
 
 	while(response == SENDING_FILE || response == EMPTY_FILE){
@@ -376,7 +376,7 @@ int readNFiles(int N, const char* dirname){
 	
 	
 	if(response == SUCCESS){
-		PRINT(fprintf(stdout,"Letti: %d files e %ld bytes\n",readCounter,bytes))
+		PRINT(fprintf(stdout,"PID:%d Letti: %d files e %ld bytes\n",getpid(),readCounter,bytes))
 		return readCounter;
 	}else{
 		return -1;
@@ -408,7 +408,8 @@ int getResponseCode(int fd){
 		errno = ECONNRESET;\
 		return -1;\
 	}\
-	return res - '0';
+	// return res - '0';
+	return res;
 }
 
 
@@ -532,7 +533,7 @@ int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCo
 		if(getFile(&size,&content,&pathname) != 0)
 			return -1;
 	}
-	PRINT(fprintf(stdout,"RICEVUTO : %s : %ld bytes\n",pathname,size))
+	PRINT(fprintf(stdout,"PID:%d RICEVUTO : %s : %ld bytes\n",getpid(),pathname,size))
 
 	if(dirname){
 		if(writeFileOnDisk(dirname,pathname,content,size) != 0){

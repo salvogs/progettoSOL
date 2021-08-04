@@ -60,38 +60,61 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags){
 	fT* fPtr = icl_hash_find(storage->ht,pathname);
 	
 	if(fPtr){ // se il file è già nel file storage
-		free(pathname);
 		if(create){
-			//fprintf(stderr,"file esistente\n");
-				UNLOCK(&(storage->smux));
-				return FILE_EXISTS;
+			UNLOCK(&(storage->smux));
+			return FILE_EXISTS; // bisogna aprirlo senza O_CREATE
 		}
 		if(lock){
 			// LOCK
 			
 		}	
-		if(enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0){
-			UNLOCK(&(storage->smux));
-			return SERVER_ERROR;
-		}
+		
+		// metto fdClient in coda ai fd che hanno aperto il file
+
+		LOCK(&(fPtr->ordering))
+		LOCK(&(fPtr->mux))
+
+		UNLOCK(&(storage->smux));
+
+		while(fPtr->activeReaders || fPtr->activeWriters)
+       		WAIT(&(fPtr->go),&(fPtr->mux))
+    
+		fPtr->activeWriters++;
+
+		UNLOCK(&(fPtr->ordering))
+		UNLOCK(&(fPtr->mux))
+		
 
 
-	}else{ // il file deve essere creato
-		if(!create){
-			//fprintf(stderr,"flag O_CREATE non specificato\n");
-			UNLOCK(&(storage->smux));
-			return FILE_NOT_EXISTS;
-		}
+		// if(enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0){
+		// 	UNLOCK(&(storage->smux));
+		// 	return SERVER_ERROR;
+		// }
 		
-		
-	
-		// creo file (vuoto) sullo storage
-		if(store_insert(storage,fdClient,pathname) != 0){
-			UNLOCK(&(storage->smux));
-			return SERVER_ERROR;
-		}
+		LOCK(&(fPtr->mux))
+
+		fPtr->activeWriters--;
+		SIGNAL(&(fPtr->go))
+
+		UNLOCK(&(fPtr->mux))
+
+		return SUCCESS;
 
 	}
+	// il file deve essere creato
+	if(!create){
+		UNLOCK(&(storage->smux));
+		return FILE_NOT_EXISTS; // bisogna aprirlo con O_CREATE
+	}
+
+	
+
+	// creo file (vuoto) sullo storage
+	if(store_insert(storage,fdClient,pathname,lock) != 0){
+		UNLOCK(&(storage->smux));
+		return SERVER_ERROR;
+	}
+
 
 	UNLOCK(&(storage->smux));
 	
@@ -111,8 +134,7 @@ int close_file(fsT* storage, int fdClient, char* pathname){
 	
 	LOCK(&(fPtr->ordering))
 	LOCK(&(fPtr->mux))
-	UNLOCK(&(storage->smux));
-
+	UNLOCK(&(storage->smux))
 
 	// aspetto mentre qualcuno legge/scrive
 
@@ -203,16 +225,32 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
 
-	// in ogni caso devo appendere al file
-	fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
-	if(!(fPtr->content)){
-		UNLOCK(&(storage->smux))
-		return SERVER_ERROR;
+	int ret = SUCCESS;
+
+	if(fPtr->fdlock && fPtr->fdlock != fdClient){
+		ret = LOCKED;
+	}
+	
+	//  !ret --- ret == SUCCESS
+
+	if(!ret && !findQueue(fPtr->fdopen,CAST_FD(fdClient))){
+		ret = NOT_OPENED;
 	}
 
-	memcpy(fPtr->content+fPtr->size,content,size);
-	fPtr->size += size;
-	storage->currCapacity += size;
+
+	if(!ret){
+
+		// in ogni caso devo appendere al file
+		fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
+		if(!(fPtr->content)){
+			UNLOCK(&(storage->smux))
+			return SERVER_ERROR;
+		}
+
+		memcpy(fPtr->content+fPtr->size,content,size);
+		fPtr->size += size;
+		storage->currCapacity += size;
+	}
 	
 	LOCK(&(fPtr->mux))
 
@@ -227,7 +265,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 	UNLOCK(&(storage->smux))
 	
 	
-	return SUCCESS;
+	return ret;
 
 }
 
@@ -252,18 +290,6 @@ int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** co
 	UNLOCK(&(storage->smux))
 
 
-	if((fPtr->fdlock && fPtr->fdlock != fdClient) || !findQueue(fPtr->fdopen,CAST_FD(fdClient))){
-		UNLOCK(&(fPtr->ordering))
-		UNLOCK(&(fPtr->mux))
-        return NOT_OPENED;
-    }
-		//printf("sugooooo %d\n",fPtr->fdopen->head->data);
-	
-	if(fPtr->size == 0){ //file vuoto
-		UNLOCK(&(fPtr->ordering))
-		UNLOCK(&(fPtr->mux))
-		return EMPTY_FILE;
-	}
 
 	/* fin quando ci sono degli scrittori sul file 
 		mi metto in attesa rilasciando la lock su MUX */
@@ -274,19 +300,39 @@ int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** co
 
 	fPtr->activeReaders++;
 
+	
 	// permetto ad altri lettori/scrittori di avanzare 
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
 
-	// leggo file
+	int ret = SUCCESS;
 
-	// copio size e content 
-
-	*size = fPtr->size;
+	if(fPtr->fdlock && fPtr->fdlock != fdClient){
+		ret = LOCKED;
+	}
 	
-	chk_null(*content = (void*)malloc(*size),SERVER_ERROR)
-	memcpy(*content,fPtr->content,*size);
+	//  !ret --- ret == SUCCESS
 
+	if(!ret && !findQueue(fPtr->fdopen,CAST_FD(fdClient))){
+		ret = NOT_OPENED;
+	}
+	
+	if(!ret && fPtr->size == 0){ //file vuoto
+		ret = EMPTY_FILE;
+	}
+
+	if(!ret){
+
+		// leggo file
+
+		// copio size e content 
+
+		*size = fPtr->size;
+		
+		chk_null(*content = (void*)malloc(*size),SERVER_ERROR)
+		memcpy(*content,fPtr->content,*size);
+
+	}
 
 	LOCK(&(fPtr->mux))
 
@@ -297,7 +343,7 @@ int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** co
 	UNLOCK(&(fPtr->mux))
 
 
-	return SUCCESS;
+	return ret;
 
 }
 
@@ -348,10 +394,38 @@ int remove_file(fsT* storage, int fdClient, char* pathname){
 		return FILE_NOT_EXISTS;
 	}
 
+	LOCK(&(fPtr->ordering))
+	LOCK(&(fPtr->mux))
+	
+	/* non rilascio lo store perche' potrei 
+		cancellare il file a qualche lettore/scrittore in attesa */
+	//UNLOCK(&(storage->smux))
+
+
+	// aspetto mentre qualcuno legge/scrive
+
+	while(fPtr->activeReaders || fPtr->activeWriters)
+        WAIT(&(fPtr->go),&(fPtr->mux));
+    
+	fPtr->activeWriters++;
+
+	UNLOCK(&(fPtr->ordering))
+	UNLOCK(&(fPtr->mux))
+
+	
+	// il client che richiede la remove deve aver prima lockato il file
 	if(fPtr->fdlock != fdClient){
-		UNLOCK(&(storage->smux));
+		//LOCK(&(fPtr->mux))
+		fPtr->activeWriters--;
+		//SIGNAL(&(fPtr->go))
+
+		//UNLOCK(&(fPtr->ordering))
+		//UNLOCK(&(fPtr->mux))
+		UNLOCK(&(storage->smux))
 		return NOT_LOCKED;
 	}
+
+	// rimuovo il file
 
 	if(store_remove(storage,fPtr,1) != 0){
 		UNLOCK(&(storage->smux));
@@ -364,28 +438,107 @@ int remove_file(fsT* storage, int fdClient, char* pathname){
 		
 }
 
-int lock_file(fsT* storage, int fd){
+int lock_file(fsT* storage, int fdClient, char* pathname){
 	
-	char* pathname = NULL;
-	
-	// leggo il pathname del file da lockare
-	//chk_neg1(get_pathname(fd,&pathname),-1)
-
 	// lock dello storage
 	LOCK(&(storage->smux));
 
 	fT* fPtr = icl_hash_find(storage->ht,pathname);
 	if(!fPtr){
 		UNLOCK(&(storage->smux));
-		free(pathname);
 		return FILE_NOT_EXISTS;
 	}
-
-	// chk_neg1(store_remove(storage,fPtr->),SERVER_ERROR)
-
-	free(pathname);
 	
+	LOCK(&(fPtr->ordering))
+	LOCK(&(fPtr->mux))
 	UNLOCK(&(storage->smux));
+
+
+	// aspetto mentre qualcuno legge/scrive
+
+	while(fPtr->activeReaders || fPtr->activeWriters)
+        WAIT(&(fPtr->go),&(fPtr->mux));
+    
+	fPtr->activeWriters++;
+
+	UNLOCK(&(fPtr->ordering))
+	UNLOCK(&(fPtr->mux))
+	
+	// se un altro client ha lockato il file
+	if(fPtr->fdlock != 0 && fPtr->fdlock != fdClient){
+		LOCK(&(fPtr->mux))
+
+		fPtr->activeWriters--;
+		SIGNAL(&(fPtr->go))
+	
+		UNLOCK(&(fPtr->mux))
+		return LOCKED;
+	}
+
+	// altrimenti lock
+
+	fPtr->fdlock = fdClient;
+
+	LOCK(&(fPtr->mux))
+
+	fPtr->activeWriters--;
+
+	SIGNAL(&(fPtr->go))
+
+	UNLOCK(&(fPtr->mux))
+
+	return SUCCESS;
+		
+}
+
+int unlock_file(fsT* storage, int fdClient, char* pathname){
+	
+	// lock dello storage
+	LOCK(&(storage->smux));
+
+	fT* fPtr = icl_hash_find(storage->ht,pathname);
+	if(!fPtr){
+		UNLOCK(&(storage->smux));
+		return FILE_NOT_EXISTS;
+	}
+	
+	LOCK(&(fPtr->ordering))
+	LOCK(&(fPtr->mux))
+	UNLOCK(&(storage->smux));
+
+
+	// aspetto mentre qualcuno legge/scrive
+
+	while(fPtr->activeReaders || fPtr->activeWriters)
+        WAIT(&(fPtr->go),&(fPtr->mux));
+    
+	fPtr->activeWriters++;
+
+	UNLOCK(&(fPtr->ordering))
+	UNLOCK(&(fPtr->mux))
+	
+	// se un altro client ha lockato il file
+	if(fPtr->fdlock != fdClient){
+		LOCK(&(fPtr->mux))
+
+		fPtr->activeWriters--;
+		SIGNAL(&(fPtr->go))
+		
+		UNLOCK(&(fPtr->mux))
+		return NOT_LOCKED;
+	}
+
+	// altrimenti reset lock
+
+	fPtr->fdlock = 0;
+
+	LOCK(&(fPtr->mux))
+
+	fPtr->activeWriters--;
+
+	SIGNAL(&(fPtr->go))
+
+	UNLOCK(&(fPtr->mux))
 
 	return SUCCESS;
 		
@@ -394,7 +547,7 @@ int lock_file(fsT* storage, int fd){
 
 
 
-int store_insert(fsT* storage, int fdClient, char* pathname){
+int store_insert(fsT* storage, int fdClient, char* pathname,int lock){
 
 	// controllo che ci sia spazio a sufficienza 		
 	if((storage->currFileNum+1) > storage->maxFileNum){
@@ -422,15 +575,26 @@ int store_insert(fsT* storage, int fdClient, char* pathname){
 	fPtr->size = 0;
 	fPtr->content = NULL;
 	
+	fPtr->fdlock = fdClient;
+	fPtr->fdwrite = fdClient;
+
 	if(!(fPtr->fdopen = createQueue(free,NULL))){
 		free(pathname);
 		free(fPtr);
 	}
 
+	// il file, oltre ad essere creato, viene anche aperto
+
 	if(enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0){
 			UNLOCK(&(storage->smux));
 			return SERVER_ERROR;
-		}
+	}
+
+	// se il flag O_LOCK e' settato allora viene anche lockato da fdClient
+
+	if(lock){
+		fPtr->fdlock = fdClient;
+	}
 
 	if(icl_hash_insert(storage->ht,pathname,fPtr) == NULL || enqueue(storage->filesQueue,fPtr) != 0){
 		free(pathname);
