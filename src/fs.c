@@ -21,7 +21,9 @@
 
 void clientExit(int fd){
 	fprintf(stdout,"client %d disconnesso\n",fd);
+
 	close(fd);
+
 	return;
 }
 
@@ -165,7 +167,7 @@ int close_file(fsT* storage, int fdClient, char* pathname){
 }
 
 
-int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected){
+int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected, int mode){
 
 	LOCK(&(storage->smux))
 
@@ -183,8 +185,10 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		/* anche rimuovendo tutti i file attualmente presenti 
 		non si riuscirebbe a memorizzare quello inviato dal client
 		*/
-		if(store_remove(storage,fPtr,1) != 0){
-			return SERVER_ERROR;
+		if(mode == 0){  // modalita' write
+			if(store_remove(storage,fPtr,1) != 0){
+				return SERVER_ERROR;
+			}
 		}
 		UNLOCK(&(storage->smux))
 		return FILE_TOO_LARGE;
@@ -195,7 +199,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 
 	while(size + storage->currCapacity > storage->maxCapacity){
 		
-		fT* ef = eject_file(storage->filesQueue,fPtr->pathname);
+		fT* ef = eject_file(storage->filesQueue,fPtr->pathname,fdClient);
 		if(!ef){
 			UNLOCK(&(storage->smux))
 			return FILE_TOO_LARGE;
@@ -237,8 +241,15 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		ret = NOT_OPENED;
 	}
 
+	if(fPtr->fdwrite && fPtr->fdwrite != fdClient){
+		ret = BAD_REQUEST;
+	}else{
+		fPtr->fdwrite = 0;
+	}
 
 	if(!ret){
+		
+
 
 		// in ogni caso devo appendere al file
 		fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
@@ -464,20 +475,21 @@ int lock_file(fsT* storage, int fdClient, char* pathname){
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
 	
-	// se un altro client ha lockato il file
+	int ret = SUCCESS;
+	/* se un altro client ha lockato il file aggiungo il fd del client
+	 alla coda di fd che attendono di acquisire la lock su quel file */
 	if(fPtr->fdlock != 0 && fPtr->fdlock != fdClient){
-		LOCK(&(fPtr->mux))
+		if(enqueue(fPtr->fdpending,CAST_FD(fdClient)) != 0)
+			ret = SERVER_ERROR;
+		else
+			ret = LOCKED; // il worker non mandera' alcuna risposta al client
 
-		fPtr->activeWriters--;
-		SIGNAL(&(fPtr->go))
-	
-		UNLOCK(&(fPtr->mux))
-		return LOCKED;
+	}else{
+		// altrimenti lock
+		fPtr->fdlock = fdClient;
 	}
 
-	// altrimenti lock
-
-	fPtr->fdlock = fdClient;
+	
 
 	LOCK(&(fPtr->mux))
 
@@ -487,11 +499,11 @@ int lock_file(fsT* storage, int fdClient, char* pathname){
 
 	UNLOCK(&(fPtr->mux))
 
-	return SUCCESS;
+	return ret;
 		
 }
 
-int unlock_file(fsT* storage, int fdClient, char* pathname){
+int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock){
 	
 	// lock dello storage
 	LOCK(&(storage->smux));
@@ -517,20 +529,27 @@ int unlock_file(fsT* storage, int fdClient, char* pathname){
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
 	
+	int ret = SUCCESS;
 	// se un altro client ha lockato il file
-	if(fPtr->fdlock != fdClient){
-		LOCK(&(fPtr->mux))
+	if(fPtr->fdlock == fdClient){
+		// controllo se qualcuno era in attesa di acquisire la lock
+		if(fPtr->fdpending->ndata){
+			*newFdLock = (long)dequeue(fPtr->fdpending);
+			if(!(*newFdLock))
+				ret = SERVER_ERROR;
 
-		fPtr->activeWriters--;
-		SIGNAL(&(fPtr->go))
-		
-		UNLOCK(&(fPtr->mux))
-		return NOT_LOCKED;
+			fPtr->fdlock = *newFdLock;
+		}else{
+			// reset lock
+			fPtr->fdlock = 0;
+		}
+	}else{
+		ret = NOT_LOCKED;
 	}
 
-	// altrimenti reset lock
 
-	fPtr->fdlock = 0;
+
+	
 
 	LOCK(&(fPtr->mux))
 
@@ -540,7 +559,7 @@ int unlock_file(fsT* storage, int fdClient, char* pathname){
 
 	UNLOCK(&(fPtr->mux))
 
-	return SUCCESS;
+	return ret;
 		
 }
 
@@ -578,7 +597,7 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock){
 	fPtr->fdlock = fdClient;
 	fPtr->fdwrite = fdClient;
 
-	if(!(fPtr->fdopen = createQueue(free,NULL))){
+	if(!(fPtr->fdopen = createQueue(free,NULL)) || !(fPtr->fdpending = createQueue(free,NULL))){
 		free(pathname);
 		free(fPtr);
 	}
@@ -665,7 +684,7 @@ fT* fileCopy(fT* fPtr){
 }
 
 
-fT* eject_file(queue* fq,char* pathname){
+fT* eject_file(queue* fq,char* pathname, int fdClient){
 	
 	if(isQueueEmpty(fq))
 		return NULL;
@@ -677,23 +696,29 @@ fT* eject_file(queue* fq,char* pathname){
 	// scorro la coda di files fin quando non ne trovo uno non vuoto
 	while(curr){
 		tmp = curr->data;
-		// skippo i file vuoti e il file che voglio appendere
-		if(tmp->size > 0 && strcmp(tmp->pathname,pathname) != 0)
+		// skippo i file vuoti/lockati e il file che voglio appendere
+		LOCK(&(tmp->ordering))
+		LOCK(&(tmp->mux))
+
+		while(tmp->activeReaders || tmp->activeWriters)
+			WAIT(&(tmp->go),&(tmp->mux))
+		// mi serve solo fare la lock, 
+		// avendo lo store lockato sono sicuro che nessuno sia in attesa
+
+		UNLOCK(&(tmp->ordering))
+		UNLOCK(&(tmp->mux))
+
+		if((tmp->fdlock == fdClient || !(tmp->fdlock)) && tmp->size && strcmp(tmp->pathname,pathname) != 0)
 			break;
 		
 		curr = curr->next;
 	}
 
-	if(curr){
-		return tmp;
-	}
-	// se sono tutti vuoti ritorno NULL
-	return NULL;
-	// return fq->head->data;
+	
+	return curr ? tmp : NULL; // NULL : attualmente non ho file da espellere
+
 		
 }
-
-
 
 
 void freeFile(void* fptr){

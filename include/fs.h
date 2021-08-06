@@ -44,6 +44,7 @@ typedef struct{
 	int fdlock;	
 	int fdwrite;
 	queue* fdopen;
+	queue* fdpending;
 }fT;
 
 
@@ -59,7 +60,7 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags);
 
 int close_file(fsT* storage, int fdClient, char* pathname);
 
-int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected);
+int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected, int mode);
 
 int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** content);
 
@@ -69,7 +70,7 @@ int remove_file(fsT* storage, int fdClient, char* pathname);
 
 int lock_file(fsT* storage, int fdClient, char* pathname);
 
-int unlock_file(fsT* storage, int fdClient, char* pathname);
+int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock);
 
 
 void freeFile(void* fptr);
@@ -78,7 +79,7 @@ int cmpFile(void* f1, void* f2);
 
 
 
-fT* eject_file(queue* fq, char* pathname);
+fT* eject_file(queue* fq,char* pathname, int fdClient);
 
 fT* fileCopy(fT* fPtr);
 
