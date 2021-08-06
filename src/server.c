@@ -132,7 +132,6 @@ void* workerFun(){
 	
 	char reqBuf[OP_REQUEST_SIZE] = "";
 
-	char resBuf[RESPONSE_CODE_SIZE+1] = "";
 
 	queue* ejected = NULL;
 	chk_null(ejected = createQueue(freeFile,cmpFile),NULL);
@@ -150,8 +149,6 @@ void* workerFun(){
 		UNLOCK(&request_mux);
 
 
-		// if(fd == 1)
-		// 	exit(EXIT_FAILURE);
 		
 		
 		//memset(reqBuf,'\0',BUFSIZE);
@@ -207,7 +204,7 @@ void* workerFun(){
 					}
 					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
 
 				//printf("dopo di openFile %d\n",storage->fileNum);
@@ -234,7 +231,7 @@ void* workerFun(){
 					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
 				
 			}
@@ -259,7 +256,7 @@ void* workerFun(){
 }
 
 
-				ret = write_append_file(storage,fd,pathname,size,content,ejected); 
+				ret = write_append_file(storage,fd,pathname,size,content,ejected,(op == WRITE_FILE) ? 0 : 1); 
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR && errno){
@@ -279,7 +276,7 @@ void* workerFun(){
 					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
 				
 			}
@@ -306,7 +303,7 @@ void* workerFun(){
 					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta(errore) al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}else{
 					// mando SENDING_FILE + size + file
 	
@@ -339,7 +336,7 @@ void* workerFun(){
 					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
 				
 			}
@@ -374,7 +371,7 @@ void* workerFun(){
 					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 
 					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
 				
 			}
@@ -395,9 +392,12 @@ void* workerFun(){
 						perror("lock file");
 					}			
 					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
+					
+					// se ret == LOCKED lascio il client in attesa
 
-					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					if(ret != LOCKED)
+						chk_neg1(sendResponseCode(fd,ret),NULL)
+					
 				}
 				
 			}
@@ -409,18 +409,22 @@ void* workerFun(){
 				if(getPathname(fd,&pathname) != 0){
 					return NULL;
 				}
+				int newFdLock = 0;
 
-
-				ret = unlock_file(storage,fd,pathname); 
+				ret = unlock_file(storage,fd,pathname,&newFdLock); 
 				
 				if(ret != -1){
 					if(ret == SERVER_ERROR){
 						perror("unlock file");
 					}			
-					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
+					// notifico eventuale client in attesa che adesso ha la lock sul file
+					if(newFdLock){
+						int res = SUCCESS;
+						chk_neg1(sendResponseCode(newFdLock,res),NULL)
+					}
 
 					// invio risposta al client
-					ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL)
+					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
 				
 			}
@@ -430,7 +434,7 @@ void* workerFun(){
 				ret = BAD_REQUEST;
 				// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 				// invio risposta al client
-				ec(writen(fd,&ret,RESPONSE_CODE_SIZE),-1,"writen",return NULL);
+				chk_neg1(sendResponseCode(fd,ret),NULL)
 			}
 		}
 	
@@ -542,6 +546,20 @@ int getPathname(int fd,char** pathname){
 
 
 
+int sendResponseCode(int fd,int res){
+
+	char resBuf[RESPONSE_CODE_SIZE+1] = "";
+
+	snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",res);
+
+	if(writen(fd,&resBuf,RESPONSE_CODE_SIZE) == -1){
+		perror("response code writen");
+		return -1;
+	}
+	
+	return 0;
+}
+
 
 
 // mando al client il file
@@ -582,7 +600,6 @@ int sendFile(int fd,char* pathname, size_t size, void* content){
 		snprintf(res,resLen,"%2d%010ld",SENDING_FILE,size); // fsize 10 char max
 		memcpy((res + strlen(res)),content,size);
 	}
-	
 	if(writen(fd,res,resLen-1) == -1){
 		perror("writen");
 		free(res);

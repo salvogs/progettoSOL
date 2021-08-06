@@ -398,7 +398,8 @@ int sendRequest(int fd, void* req, int len){
 }
 
 int getResponseCode(int fd){
-	int res = 0;
+	char res[RESPONSE_CODE_SIZE+1] = "";
+
 	int ret = readn(FD_CLIENT,&res,RESPONSE_CODE_SIZE);\
 	
 	if(ret == -1){\
@@ -409,7 +410,7 @@ int getResponseCode(int fd){
 		return -1;\
 	}\
 	// return res - '0';
-	return res;
+	return atoi(res);
 }
 
 

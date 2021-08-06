@@ -28,33 +28,38 @@
 
 // a = arg r = retvalue  
 // nel caso di RECIVED_FILE op funge da bytes del file
-	//	fprintf(stdout,"PID: %d ", getpid());
 #define PRINTER(op,a,r)  \
 	if(PRINTS){\
 		switch(r){\
 			case SUCCESS:\
-				fprintf(stdout,"%s : %s : SUCCESSO\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : SUCCESSO\n",getpid(),op,a);\
 			break;\
 			case EMPTY_FILE:\
-				fprintf(stdout,"%s : %s : SUCCESSO(FILE VUOTO)\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : SUCCESSO(FILE VUOTO)\n",getpid(),op,a);\
 			break;\
 			case FILE_EXISTS:\
-				fprintf(stdout,"%s : %s : FILE GIA' ESISTENTE\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : FILE GIA' ESISTENTE\n",getpid(),op,a);\
 			break;\
 			case FILE_NOT_EXISTS:\
-				fprintf(stdout,"%s : %s : FILE NON TROVATO\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : FILE NON TROVATO\n",getpid(),op,a);\
 			break;\
 			case SERVER_ERROR:\
-				fprintf(stdout,"%s : %s : ERRORE INTERNO SERVER\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : ERRORE INTERNO SERVER\n",getpid(),op,a);\
 			break;\
 			case BAD_REQUEST:\
-				fprintf(stdout,"%s : %s : RICHIESTA INCOMPLETA\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : BAD REQUEST\n",getpid(),op,a);\
 			break;\
 			case FILE_TOO_LARGE:\
-				fprintf(stdout,"%s : %s : FILE TROPPO GRANDE\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : FILE TROPPO GRANDE\n",getpid(),op,a);\
+			break;\
+			case LOCKED:\
+				fprintf(stdout,"PID:%d %s : %s : FILE BLOCCATO\n",getpid(),op,a);\
 			break;\
 			case NOT_LOCKED:\
-				fprintf(stdout,"%s : %s : NESSUNA LOCK SUL FILE\n",op,a);\
+				fprintf(stdout,"PID:%d %s : %s : NESSUNA LOCK SUL FILE\n",getpid(),op,a);\
+			break;\
+			case NOT_OPENED:\
+				fprintf(stdout,"PID:%d %s : %s : FILE NON APERTO\n",getpid(),op,a);\
 			break;\
 			default:;break;\
 		}\
@@ -64,6 +69,8 @@
 	if(PRINTS)	(a);
 
 
+#define PRINT_READ(b) if(PRINTS){fprintf(stdout,"PID:%d Letti: %ld bytes\n",getpid(),b);}
+#define PRINT_WRITE(b) if(PRINTS){fprintf(stdout,"PID:%d Scritti: %ld bytes\n",getpid(),b);}
 
 
 int FD_CLIENT;
