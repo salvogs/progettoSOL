@@ -56,17 +56,17 @@ void clientExit(int fd);
 
 fsT* create_fileStorage(char* configPath, char* delim);
 
-int open_file(fsT* storage, int fdClient, char* pathname, int flags);
+int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPending);
 
 int close_file(fsT* storage, int fdClient, char* pathname);
 
-int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected, int mode);
+int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected, queue* fdPending);
 
 int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** content);
 
 int read_n_file(fsT* storage,int n,int fdClient, queue* ejected);
 
-int remove_file(fsT* storage, int fdClient, char* pathname);
+int remove_file(fsT* storage, int fdClient, char* pathname, queue* fdPending);
 
 int lock_file(fsT* storage, int fdClient, char* pathname);
 
@@ -79,12 +79,12 @@ int cmpFile(void* f1, void* f2);
 
 
 
-fT* eject_file(queue* fq,char* pathname, int fdClient);
+fT* eject_file(queue* fq,char* pathname, int fdClient, int takeEmpty);
 
 fT* fileCopy(fT* fPtr);
 
 int store_remove(fsT* storage, fT* fPtr, int freeFile);
 
-int store_insert(fsT* storage, int fdClient, char* pathname,int lock);
+int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdPending);
 
 #endif

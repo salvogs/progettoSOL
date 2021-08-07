@@ -53,9 +53,10 @@
 #define BAD_REQUEST 5
 #define SENDING_FILE 6
 #define FILE_TOO_LARGE 7
-#define NOT_LOCKED 8
-#define LOCKED 9
-#define NOT_OPENED 10
+#define STORE_FULL 8
+#define NOT_LOCKED 9
+#define LOCKED 10
+#define NOT_OPENED 11
 // #define RECIVED_FILE 7
 //#define END_SENDING_FILE 7
 

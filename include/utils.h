@@ -68,7 +68,14 @@ char *strndup(const char *s, size_t n);
         return r;   \
     }       
 
-    
+// die on SERVER_ERROR
+#define die_on_se(s) \
+    if((s) == SERVER_ERROR) \
+    {               \
+        exit(EXIT_FAILURE);   \
+    }       
+
+
 
 #define CREA_THREAD(tid,param,fun,args) if(pthread_create(tid,param,fun,args) != 0){ \
 	fprintf(stderr,"errore creazione thread\n"); \

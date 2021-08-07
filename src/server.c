@@ -110,7 +110,7 @@ int masterFun(){
 				}else{
 					//metto in coda il fd del client che ha mandato qualcosa (da gestire da un worker)
 					LOCK(&request_mux)
-					ec(enqueue(requestQueue,(void*)(long)fd),1,"enqueue",return 1)
+					ec(enqueue(requestQueue,CAST_FD(fd)),1,"enqueue",return 1)
 					SIGNAL(&cond);
 					UNLOCK(&request_mux);
 
@@ -126,17 +126,21 @@ int masterFun(){
 }
 
 void* workerFun(){
-	int ret,end = 0;
+	int op = 0,ret = 0,end = 0;
 	
 	char bufPipe[BUFPIPESIZE] = "";
 	
 	char reqBuf[OP_REQUEST_SIZE] = "";
 
+	char *pathname = NULL;
 
-	queue* ejected = NULL;
-	chk_null(ejected = createQueue(freeFile,cmpFile),NULL);
-
+	queue* ejected = createQueue(freeFile,cmpFile);
+	chk_null(ejected,NULL);
+	queue* fdPending = createQueue(free,NULL);
+	chk_null(ejected,NULL);
+	
 	while(!end){
+		
 		LOCK(&request_mux);
 		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
@@ -148,9 +152,7 @@ void* workerFun(){
 			SIGNAL(&cond)
 		UNLOCK(&request_mux);
 
-
-		
-		
+			
 		//memset(reqBuf,'\0',BUFSIZE);
 		
 		//leggo operazione
@@ -165,74 +167,35 @@ void* workerFun(){
 			continue;
 		}
 		
-	
-		
-		
 
-		int op = reqBuf[0] - '0';
-		// printf("operazione: %d\n dim: %s\n",op,buf+1);
-		// printf("operazione: %d\n",op);
+		op = reqBuf[0] - '0';
 		
-		//long reqLen;
 		
 	
 		switch(op){
 			case OPEN_FILE:{
 				// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
-				// isNumber(buf+1,&reqLen); // reqLen = lunghezza pathname
-				
-			
-				//printf("prima di openFile %d\n",storage->fileNum);
-				char* pathname = NULL;
-				// leggo il pathname del file da rimuovere
-				if(getPathname(fd,&pathname) != 0){
-					return NULL;
-				}
+				die_on_se(getPathname(fd,&pathname))
 
 				int flags = 0;
 
 				//leggo i flags
-				if((getFlags(fd, &flags)) != 0){
-					free(pathname);
-					return NULL;
-				}
+				die_on_se(getFlags(fd, &flags))
 
-				ret = open_file(storage,fd,pathname,flags);				
-				if(ret != -1){
-					if(ret == SERVER_ERROR){
-						perror("open file");
-					}
-					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
-					// invio risposta al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
-				}
-
-				//printf("dopo di openFile %d\n",storage->fileNum);
-			
+				ret = open_file(storage,fd,pathname,flags,fdPending);				
+				
+					
 			}	
 			
 			break;
 			
 			case CLOSE_FILE:{
-				
-				char* pathname = NULL;
+
 				// leggo il pathname del file da chiudere
-				if(getPathname(fd,&pathname) != 0){
-					return NULL;
-				}
-	
+				die_on_se(getPathname(fd,&pathname))
+
 				ret = close_file(storage,fd,pathname);
 				
-				if(ret != -1){			
-					if(ret == SERVER_ERROR){
-						perror("close file");
-					}
-
-					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
-
-					// invio risposta al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
-				}
 				
 			}
 			break;
@@ -240,105 +203,72 @@ void* workerFun(){
 			case WRITE_FILE:
 			case APPEND_TO_FILE:
 			{
-				char* pathname = NULL;
-	
 				// leggo il pathname del file da scrivere
-				if((getPathname(fd,&pathname)) != 0){
-					return NULL;
-				}
-
+				die_on_se(getPathname(fd,&pathname))
+					
 				size_t size = 0;
 				void* content = NULL;
 
 				// leggo contentuto file
-				if(getFile(fd,&size,&content) != 0){
-					return NULL;
-}
+				die_on_se(getFile(fd,&size,&content))
+			
 
 
-				ret = write_append_file(storage,fd,pathname,size,content,ejected,(op == WRITE_FILE) ? 0 : 1); 
+				ret = write_append_file(storage,fd,pathname,size,content,ejected,fdPending); 
 				
-				if(ret != -1){
-					if(ret == SERVER_ERROR && errno){
-						perror("write/append file");
-					}	
+				
 
-					// mando i file espulsi
-					while(ejected->ndata){
-						fT* ef = dequeue(ejected);	
-						if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
-							return NULL;
-						}
-						freeFile(ef);
+				// mando i file espulsi
+				while(ejected->ndata){
+					fT* ef = dequeue(ejected);	
+					die_on_se(sendFile(fd,ef->pathname,ef->size,ef->content))
 
-					}
-					
-					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
+					freeFile(ef);
 
-					// invio risposta al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
 				}
+					
+					
+				
 				
 			}
 			break;
 
 			case READ_FILE:{
-				int ret = 0;
-				char* pathname = NULL;
 				// leggo il pathname del file da leggere
-				if((ret = getPathname(fd,&pathname)) != 0){
-					return NULL;
-				}
+				die_on_se(getPathname(fd,&pathname))
+					
 
 				size_t size = 0;
 				void* content = NULL;
 
 				ret = read_file(storage,fd,pathname,&size,&content); 
 				
-				if(ret != -1 && ret != SUCCESS){		
-					if(ret == SERVER_ERROR){
-						perror("read file");
-					}	
-					
-					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
+				if(ret == SUCCESS){
 
-					// invio risposta(errore) al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
-				}else{
 					// mando SENDING_FILE + size + file
-	
+
 					if(sendFile(fd,NULL,size,content) != 0){
 						return NULL;
 					}
 
 					free(content);
+				}else{
+					// invio risposta al client (errore)
+					die_on_se(sendResponseCode(fd,ret))
 				}
-				
 			}
+	
 			break;
 
 			
 			case REMOVE_FILE:{
 				
-				char* pathname = NULL;
 				// leggo il pathname del file da rimuovere
-				if(getPathname(fd,&pathname) != 0){
-					return NULL;
-				}
-
-				ret = remove_file(storage,fd,pathname);
+				die_on_se(getPathname(fd,&pathname))
+					
 				
-				if(ret != -1){			
-					if(ret == SERVER_ERROR){
-						perror("remove file");
-					}
-
-					//snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
-
-					// invio risposta al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
-				}
-				
+				ret = remove_file(storage,fd,pathname,fdPending);
+					
 			}
 			break;
 
@@ -346,18 +276,12 @@ void* workerFun(){
 			case READ_N_FILE:{
 
 				int n = 0;
-				if(getN(fd,&n) != 0){
-					return NULL;
-				}
-
-
-				ret = read_n_file(storage,n,fd,ejected); 
+				die_on_se(getN(fd,&n))
 				
-				if(ret != -1){
-					if(ret == SERVER_ERROR){
-						perror("read n file");
-					}	
 
+				die_on_se(ret = read_n_file(storage,n,fd,ejected))
+				
+				
 					// mando i file 
 					while(ejected->ndata){
 						fT* ef = dequeue(ejected);	
@@ -367,77 +291,63 @@ void* workerFun(){
 						freeFile(ef);
 
 					}
-
-					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
-
-					// invio risposta al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
-				}
 				
 			}
 			break;
 
 			case LOCK_FILE:{
-				char* pathname = NULL;
 				// leggo il pathname del file da rimuovere
-				if(getPathname(fd,&pathname) != 0){
-					return NULL;
-				}
+				die_on_se(getPathname(fd,&pathname))
 
 
 				ret = lock_file(storage,fd,pathname); 
 				
-				if(ret != -1){
-					if(ret == SERVER_ERROR){
-						perror("lock file");
-					}			
-					// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
-					
-					// se ret == LOCKED lascio il client in attesa
+				// se ret == LOCKED lascio il client in attesa
 
-					if(ret != LOCKED)
-						chk_neg1(sendResponseCode(fd,ret),NULL)
+				if(ret != LOCKED)
+					die_on_se(sendResponseCode(fd,ret))
 					
-				}
+				
 				
 			}
 			break;
 
 			case UNLOCK_FILE:{
-				char* pathname = NULL;
 				// leggo il pathname del file da rimuovere
-				if(getPathname(fd,&pathname) != 0){
-					return NULL;
-				}
+				die_on_se(getPathname(fd,&pathname))
+				
 				int newFdLock = 0;
 
-				ret = unlock_file(storage,fd,pathname,&newFdLock); 
+				die_on_se(ret = unlock_file(storage,fd,pathname,&newFdLock))
 				
-				if(ret != -1){
-					if(ret == SERVER_ERROR){
-						perror("unlock file");
-					}			
-					// notifico eventuale client in attesa che adesso ha la lock sul file
-					if(newFdLock){
-						int res = SUCCESS;
-						chk_neg1(sendResponseCode(newFdLock,res),NULL)
-					}
 
-					// invio risposta al client
-					chk_neg1(sendResponseCode(fd,ret),NULL)
+				
+				// notifico eventuale client in attesa che adesso ha la lock sul file
+				if(newFdLock){
+					die_on_se(sendResponseCode(newFdLock,SUCCESS))
 				}
+
+				
 				
 			}
 			break;
 
 			default:{
-				ret = BAD_REQUEST;
-				// snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",ret);
 				// invio risposta al client
-				chk_neg1(sendResponseCode(fd,ret),NULL)
+				die_on_se(sendResponseCode(fd,BAD_REQUEST))
 			}
 		}
 	
+		if(op != READ_FILE && op != LOCK_FILE){
+			// invio risposta al client
+			die_on_se(sendResponseCode(fd,ret))
+		}
+
+		while(fdPending->ndata){
+			die_on_se(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
+		}
+
+
 		sprintf(bufPipe,"%d",fd);
 		write(pfd[1],bufPipe,4);
 	}
@@ -501,9 +411,8 @@ int main(int argc, char* argv[]){
 int getPathname(int fd,char** pathname){
 	// leggo lunghezza pathname
 	char* _pathLen = calloc(PATHNAME_LEN+1,1);
-	if(!_pathLen)
-		return SERVER_ERROR;
-
+	chk_null(_pathLen,SERVER_ERROR)
+	
 	int ret = 0;
 
 	ret = readn(fd,_pathLen,PATHNAME_LEN);
@@ -547,7 +456,7 @@ int getPathname(int fd,char** pathname){
 
 
 int sendResponseCode(int fd,int res){
-
+	
 	char resBuf[RESPONSE_CODE_SIZE+1] = "";
 
 	snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",res);
