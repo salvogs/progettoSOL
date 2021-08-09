@@ -3,6 +3,9 @@
 
 
 
+void clientExit(int fd);
+
+pthread_t* spawnThread(int n);
 
 int masterFun();
 

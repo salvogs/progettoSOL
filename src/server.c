@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <sys/select.h>
+#include <signal.h>
 #include "../include/utils.h"
 #include "../include/configParser.h"
 #include "../include/fs.h"
@@ -27,15 +28,139 @@ pthread_mutex_t request_mux = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 
+
 // coda in cui inserire i fd dei client che fanno richieste
 queue* requestQueue;
 
 // pipe che servirà ai thread worker per comunicare al master i fd_client da riascoltare
 int pfd[2];
 
-
+char* sockname;
+int workerNum;
+char* logPath;
 
 fsT* storage;
+
+
+volatile sig_atomic_t noMoreClient = 0;
+volatile sig_atomic_t noMoreRequest = 0;
+
+int clientNum = 0;
+
+
+void signalHandler(int signum){
+	printf("ricevuto %d\n",signum);
+	switch(signum){
+		case SIGINT:
+		case SIGQUIT:
+			noMoreRequest = 1;
+			break;
+		case SIGHUP:
+			noMoreClient = 1;
+			break;
+
+		default: 
+			_exit(EXIT_FAILURE);
+	}
+	return;
+}
+
+
+int main(int argc, char* argv[]){
+	//con l'avvio del server deve essere specificato il path del file di config
+	if(argc == 1){
+		fprintf(stderr,"usage:%s configpath\n",argv[0]);
+		return 1;
+	}
+	
+
+	//installo i nuovi signal handler per SIGINT, SIGQUIT, SIGHUP 
+	sigset_t set;
+	struct sigaction sact;
+
+	//maschero tutti i segnali finchè i gestori permanenti non sono istallati
+	ec(sigfillset(&set),-1,"sigfillset",return 1)
+	ec(pthread_sigmask(SIG_SETMASK,&set,NULL),-1,"pthread_sigmask",return 1)
+	memset(&sact,0,sizeof(sact));
+
+	sact.sa_handler = signalHandler;
+	ec(sigaction(SIGINT,&sact,NULL),-1,"sigaction",return 1)
+	ec(sigaction(SIGQUIT,&sact,NULL),-1,"sigaction",return 1)
+	ec(sigaction(SIGHUP,&sact,NULL),-1,"sigaction",return 1)
+
+	sact.sa_handler = SIG_IGN;
+	ec(sigaction(SIGPIPE,&sact,NULL),-1,"sigaction",return 1)
+
+	//tolgo la maschera
+	ec(sigemptyset(&set),-1,"sigemptyset",return 1)
+	ec(pthread_sigmask(SIG_SETMASK,&set,NULL),-1,"pthread_sigmask",return 1)
+	
+	/*
+		per prima cosa effettuo il parsing del il file di configurazione 
+	*/
+	parseT* config = parseConfig(argv[1],DELIM_CONFIG_FILE);
+	chk_null(config,1);
+
+	sockname = config->sockname;
+	logPath = config->logPath;
+	workerNum = config->workerNum;
+
+	if((storage = create_fileStorage(config->maxCapacity,config->maxFileNum)) == NULL)
+		return 1;
+	
+
+	printf("MAXCAPACITY: %ld, MAXFILENUM: %d"
+		 "WORKERNUM %d, SOCKNAME %s, LOGPATH %s\n"\
+		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath);
+
+	// destroyConfiguration(config);
+
+	ec(requestQueue = createQueue(free,NULL),NULL,"creazione coda",return 1);
+	
+	ec(pipe(pfd),-1,"creazione pipe",return 1)
+	
+
+
+
+	// devo spawnare i thread worker sempre in attesa di servire client
+
+
+	pthread_t *tid; //array dove mantenere tid dei worker
+	tid = spawnThread(workerNum);
+	
+	/*
+		accetto richieste da parte dei client
+		e le faccio servire dai thread worker
+	*/
+	// funzione eseguita dal thread main (dispatcher)
+	chk_neg1(masterFun(),EXIT_FAILURE);
+
+
+	/* mando messaggio di terminazione (NULL) ai workers
+	(tanti quanti sono i workers) */
+
+	for(int i = 0; i < workerNum; i++){
+		LOCK(&request_mux)
+		ec(enqueue(requestQueue,NULL),1,"enqueue",return 1)
+		SIGNAL(&cond);
+		UNLOCK(&request_mux);
+	}
+
+	for(int i = 0; i < workerNum; i++){
+		pthread_join(tid[i],NULL);
+	}
+
+	unlink(sockname);
+	destroyQueue(requestQueue);
+	destroyConfiguration(config);
+	 puts("terminooo");
+
+	return 0;
+}
+
+
+
+
 
 int masterFun(){
 
@@ -43,9 +168,9 @@ int masterFun(){
 	// creazione endpoint
 	ec(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"server socket",return 1);
 	// inizializzo campi necessari alla chiamata di bind
-	(void) unlink(storage->SOCKNAME);
+	(void) unlink(sockname);
 	struct sockaddr_un sa;
-	strncpy(sa.sun_path, storage->SOCKNAME,UNIX_PATH_MAX);
+	strncpy(sa.sun_path, sockname,UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX; //famiglia indirizzo
 	
 	//assegno un indirizzo a un socket
@@ -66,24 +191,34 @@ int masterFun(){
 	int fd_client;
 	
 
-	// char buf[BUFSIZE];
-
-	
-
 	FD_SET(pfd[0],&set);
 	
 	char bufPipe[BUFPIPESIZE];
 
 	
-	while(1){
+	while(!noMoreRequest){
 		//usiamo la select per evitare che le read e le accept si blocchino
 		
 		//ad ogni iterazione set cambia, è opportuno farne una copia
 		read_set = set;
 		//vedo quali descrittori sono attivi fino a fd_num+1
-		ec(select(fd_num+1,&read_set,NULL,NULL,NULL),-1,"select",return 1)
-
-		
+		if(select(fd_num+1,&read_set,NULL,NULL,NULL) == -1){
+			if(errno != EINTR){
+				perror("select");
+				return 1;
+			}
+			// errno == EINTR (arrivato segnale)
+			
+			// SIGHUP (non accetto piu'nuove connessioni)
+			if(noMoreClient){
+				puts("no more client");
+				FD_CLR(fd_skt,&set);
+				close(fd_skt);
+				if(clientNum == 0)
+					break;
+			}
+			continue;
+		}
 		//guardo tutti i fd della maschera di bit read_set
 		for(fd = 0; fd <=fd_num; fd++){
 			if(FD_ISSET(fd,&read_set)){
@@ -91,7 +226,7 @@ int masterFun(){
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
 					fprintf(stdout,"client connesso %d\n",fd_client);
-					
+					clientNum++;
 					//nella mascheraa set metto a 1 il bit della fd_client(ora è attivo)
 					FD_SET(fd_client,&set);
 					//tengo sempre aggiornato il descrittore con indice massimo
@@ -100,8 +235,9 @@ int masterFun(){
 
 				}else if(fd == pfd[0]){
 					read(fd,bufPipe,BUFPIPESIZE);
-					if((fd_client = atoi(bufPipe)) == 0)
+					if((fd_client = atoi(bufPipe)) == 0) // da sistemare
 						return 1;
+					
 					
 					FD_SET(fd_client,&set);
 
@@ -123,6 +259,9 @@ int masterFun(){
 			}
 		}
 	}
+
+	// dispatcher termina
+	return 0;
 }
 
 void* workerFun(){
@@ -147,27 +286,31 @@ void* workerFun(){
 		fprintf(stdout,"sono il thread %ld\n", pthread_self());
 		// printQueueInt(requestQueue);
 
-		int fd = (long)dequeue(requestQueue);
+		void* fd_ = dequeue(requestQueue);
 		if(!isQueueEmpty(requestQueue))
 			SIGNAL(&cond)
 		UNLOCK(&request_mux);
 
+		if(fd_ == NULL) break; // messaggio terminazione
+
+		int fd = (long)fd_;
+
 			
-		//memset(reqBuf,'\0',BUFSIZE);
+		//memset(reqBuf,'\0',OP_REQUEST_SIZE);
 		
 		//leggo operazione
 		
 		ret = readn(fd,reqBuf,OP_REQUEST_SIZE);
+		printf("letto %s %d \n",reqBuf, ret);
 		if(ret == 0){
 			clientExit(fd);
 			continue;
 		}
 		if(ret == -1){
 			perror("op read");
-			continue;
+			return NULL;
 		}
 		
-
 		op = reqBuf[0] - '0';
 		
 		
@@ -366,45 +509,12 @@ pthread_t* spawnThread(int n){
 }
 
 
-int main(int argc, char* argv[]){
-	//con l'avvio del server deve essere specificato il path del file di config
-	if(argc == 1){
-		fprintf(stderr,"usage:%s configpath\n",argv[0]);
-		return 1;
-	}
-	
-	
-	if((storage = create_fileStorage(argv[1],DELIM_CONFIG_FILE)) == NULL)
-		return 1;
-	
+void clientExit(int fd){
+	fprintf(stdout,"client %d disconnesso\n",fd);
+	clientNum--;
+	close(fd);
 
-	printf("MAXCAPACITY: %ld, MAXFILENUM: %ld"
-		 "WORKERNUM %ld, SOCKNAME %s, LOGPATH %s\n"\
-		 ,storage->maxCapacity,storage->maxFileNum,storage->workerNum,storage->SOCKNAME,storage->logPath);
-
-	
-
-	ec(requestQueue = createQueue(free,NULL),NULL,"creazione coda",return 1);
-	
-	ec(pipe(pfd),-1,"creazione pipe",return 1)
-	
-
-
-
-	// devo spawnare i thread worker sempre in attesa di servire client
-
-
-	pthread_t *tid; //array dove mantenere tid dei worker
-	tid = spawnThread(storage->workerNum);
-	
-	/*
-		accetto richieste da parte dei client
-		e le faccio servire dai thread worker
-	*/
-	
-	return masterFun();
-
-	// return 0;
+	return;
 }
 
 
