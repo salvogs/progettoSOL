@@ -19,24 +19,15 @@
 
 
 
-void clientExit(int fd){
-	fprintf(stdout,"client %d disconnesso\n",fd);
 
-	close(fd);
-
-	return;
-}
-
-
-fsT* create_fileStorage(char* configPath, char* delim){
+fsT* create_fileStorage(size_t maxCapacity, int maxFileNum){
 	
-	/*
-		per prima cosa effettuo il parsing del il file di configurazione 
-	*/
-	fsT* storage = parseConfig(configPath,delim);
-	if(!storage)
-		return NULL;
+	fsT* storage = malloc(sizeof(fsT));
+	chk_null(storage,NULL)
 
+	storage->maxCapacity = maxCapacity;
+
+	storage->maxFileNum = maxFileNum;
 
 	// alloco hash table
 	ec(storage->ht = icl_hash_create(storage->maxFileNum,NULL,NULL), NULL,"hash create",return NULL)

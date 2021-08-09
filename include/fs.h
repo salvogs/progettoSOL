@@ -8,16 +8,13 @@
 //struct che mantiene lo stato del file storage server
 
 typedef struct{
-	long maxCapacity;
-	long maxFileNum;
-	long workerNum;
-
-	char* SOCKNAME;
-	char* logPath;
-
+	
 	icl_hash_t* ht;
-	long currCapacity;
-	long currFileNum;
+
+	size_t maxCapacity;
+	size_t currCapacity;
+	int maxFileNum;
+	int currFileNum;
 
 	queue* filesQueue;
 
@@ -52,9 +49,7 @@ typedef struct{
 #define CAST_FD(fd) (void*)(long)fd
 
 
-void clientExit(int fd);
-
-fsT* create_fileStorage(char* configPath, char* delim);
+fsT* create_fileStorage(size_t maxCapacity, int maxFileNum);
 
 int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPending);
 

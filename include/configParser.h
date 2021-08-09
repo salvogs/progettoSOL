@@ -27,7 +27,7 @@
 			return NULL;\
 		}\
 		remplaceNewline(token,strlen(token));\
-		if(isNumber(token,&(p)) == 0){\
+		if(isNumber(token,(long*)&(p)) == 0){\
 			if(p < v){\
 				fprintf(stderr,err_m); \
 				return NULL;\
@@ -63,13 +63,23 @@
 	}
 
 		
+typedef struct{
+	size_t maxCapacity;
+	size_t currCapacity;
+	int maxFileNum;
+	int currFileNum;
 
+	int workerNum;
+	char* sockname;
+	char* logPath; 
+}parseT;
 
 
 
 
 void remplaceNewline(char* s, int len);
-fsT* parseConfig(char* configPath,char* delim);
-void destroyConfiguration(fsT* fsConfig);
+int checkParsing(parseT* config);
+parseT* parseConfig(char* configPath,char* delim);
+void destroyConfiguration(parseT* config);
 
 #endif

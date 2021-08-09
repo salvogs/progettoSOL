@@ -30,7 +30,7 @@ void remplaceNewline(char* s, int len){
 	return;
 }
 
-fsT* checkParsing(fsT* fsConfig){
+int checkParsing(parseT* config){
 	
 	if(!mc){
 		errno = EINVAL;
@@ -58,16 +58,16 @@ fsT* checkParsing(fsT* fsConfig){
 	}
 
 	if(errno){
-		destroyConfiguration(fsConfig);
-		return NULL;
+		destroyConfiguration(config);
+		return 1;
 	}
 	
-	return fsConfig;
+	return 0;
 
 }
 
 
-fsT* parseConfig(char* configPath,char* delim){
+parseT* parseConfig(char* configPath,char* delim){
 
 	char* path = realpath(configPath,NULL);
 	ec(path,NULL,"config path",return NULL)
@@ -81,14 +81,14 @@ fsT* parseConfig(char* configPath,char* delim){
 	char buf[256];
 	char* token;
 
-	fsT* fsConfig = malloc(sizeof(fsT));
-	ec(fsConfig,NULL,"malloc fsConfig",return NULL)
+	parseT* config = malloc(sizeof(parseT));
+	ec(config,NULL,"malloc config",return NULL)
 
-	fsConfig->maxCapacity = 0;
-	fsConfig->maxFileNum = 0;
-	fsConfig->workerNum = 0;
-	fsConfig->SOCKNAME = NULL;
-	fsConfig->logPath = NULL;
+	config->maxCapacity = 0;
+	config->maxFileNum = 0;
+	config->workerNum = 0;
+	config->sockname = NULL;
+	config->logPath = NULL;
 
 
 	while(fgets(buf,BUFSIZE,fPtr) != NULL){
@@ -96,27 +96,28 @@ fsT* parseConfig(char* configPath,char* delim){
 			continue;
 
 		char* save = NULL;
-		//printf("%s",buf);
+		
 		token = strtok_r(buf,delim,&save);
 		if(!token){
 			fprintf(stderr,"strtok_r failed\n");
+			destroyConfiguration(config);
 			return NULL;
 		}
 		
 		if(strncmp(token,"MAXCAPACITY",strlen(token)) == 0){
-			GET_INTEGER_PARAMETER(fsConfig->maxCapacity,1,MAXCAPACITY_ERR)
+			GET_INTEGER_PARAMETER(config->maxCapacity,1,MAXCAPACITY_ERR)
 			mc++;
 		}else if(strncmp(token,"MAXFILENUM",strlen(token)) == 0){
-			GET_INTEGER_PARAMETER(fsConfig->maxFileNum,1,MAXFILENUM_ERR)
+			GET_INTEGER_PARAMETER(config->maxFileNum,1,MAXFILENUM_ERR)
 			mfn++;
 		}else if(strncmp(token,"WORKERNUM",strlen(token)) == 0){
-			GET_INTEGER_PARAMETER(fsConfig->workerNum,1,WORKERNUM_ERR)
+			GET_INTEGER_PARAMETER(config->workerNum,1,WORKERNUM_ERR)
 			wn++;
 		}else if(strncmp(token,"SOCKETPATH",strlen(token)) == 0){
-			GET_STRING_PARAMETER(fsConfig->SOCKNAME,".sk",SOCKNAME_ERR)
+			GET_STRING_PARAMETER(config->sockname,".sk",SOCKNAME_ERR)
 			sp++;
 		}else if(strncmp(token,"LOGPATH",strlen(token)) == 0){
-			GET_STRING_PARAMETER(fsConfig->logPath,".txt",LOGPATH_ERR)
+			GET_STRING_PARAMETER(config->logPath,".txt",LOGPATH_ERR)
 			lp++;
 		}
 
@@ -126,21 +127,21 @@ fsT* parseConfig(char* configPath,char* delim){
 
 	fclose(fPtr);
 
-	if(!checkParsing(fsConfig))
+	if(checkParsing(config) != 0)
 		return NULL;
 	
 
-	return fsConfig;
+	return config;
 
 	
 
 }
 
-void destroyConfiguration(fsT* fsConfig){
-	if(fsConfig->SOCKNAME)
-		free(fsConfig->SOCKNAME);
-	if(fsConfig->logPath)
-		free(fsConfig->logPath);
-	if(fsConfig)
-		free(fsConfig);
+void destroyConfiguration(parseT* config){
+	if(config->sockname)
+		free(config->sockname);
+	if(config->logPath)
+		free(config->logPath);
+	if(config)
+		free(config);
 }
