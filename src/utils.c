@@ -45,13 +45,11 @@ ssize_t readn(int fd, void *ptr, size_t n)
         }
         else if (nread == 0)
         {
-            //puts("eof");
             break; /* EOF */
         }
         nleft -= nread;
         ptr += nread;
     }
-    //puts("fineciclo");
     return (n - nleft); /* return >= 0  (bytes read) */
 }
 
@@ -119,7 +117,7 @@ int readFileFromDisk(const char* pathname, void** content, size_t* size){
 
 int writeFileOnDisk(const char* dirname,const char* path, void* buf, size_t size){
 
-	int newLen = strlen(dirname) + strlen(path)+1; // \0  
+    int newLen = strlen(dirname) + strlen(path)+1; // \0  
 	char* newPath = calloc(newLen,1);
 	ec(newPath,NULL,"calloc",return 1);
 
@@ -133,21 +131,35 @@ int writeFileOnDisk(const char* dirname,const char* path, void* buf, size_t size
 	for(int i = newLen-1;i >= 0;i--){
 		if(tmp[i] == '/'){
 			tmp[i] = '\0';
-			i = -1;
+			break;
 		}
 	}
 
-	char* save = NULL,*token;
+	char* save = NULL,*token = NULL;
 	
 	char initialDir[UNIX_PATH_MAX];
 	getcwd(initialDir,UNIX_PATH_MAX);
-	
-	token = strtok_r(tmp,"/",&save);
+
+    token = strtok_r(tmp,"/",&save);
+	if(tmp[0] == '/'){
+        // scrivo a partire dalla root
+        if(mkdir(token-1,S_IRWXU) != 0 && errno != EEXIST){
+            perror("mkdir");
+			free(newPath);
+			free(tmp);
+            chdir(initialDir);
+			return 1;
+		}
+		chdir(token-1);
+		token = strtok_r(NULL,"/",&save);
+    }
 
 	while(token){
 		if(mkdir(token,S_IRWXU) != 0 && errno != EEXIST){
+            perror("mkdir");
 			free(newPath);
 			free(tmp);
+            chdir(initialDir);
 			return 1;
 		}
 		chdir(token);
