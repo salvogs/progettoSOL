@@ -34,9 +34,9 @@ int removeFromQueue(queue* q, void* elem, int freeData);
 
 void* findQueue(queue* q,void* elem);
 
-void destroyData(queue* q);
+void destroyData(queue* q, int freeData);
 
-void destroyQueue(queue* q);
+void destroyQueue(queue* q, int freeData);
 
 void printQueueInt(queue* q);
 

@@ -10,7 +10,7 @@
 #include "../include/utils.h"
 
 void destroyClientParsing(parseT* parseResult){
-	destroyQueue(parseResult->argList);
+	destroyQueue(parseResult->argList,1);
 	if(parseResult->SOCKNAME)
 		free(parseResult->SOCKNAME);
 

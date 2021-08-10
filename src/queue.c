@@ -178,24 +178,26 @@ void* findQueue(queue* q,void* elem){
 	return NULL; 
 }
 
-void destroyData(queue* q){
+void destroyData(queue* q, int freeData){
 	
 	data* tmp = q->head;
 	
 	while(!isQueueEmpty(q)){
 		q->ndata--;
 		q->head = q->head->next;
-		q->freeFun(tmp->data);
+		if(freeData){
+			q->freeFun(tmp->data);
+		}
 		free(tmp);
 		tmp = q->head;
 	}
 }
 
 
-void destroyQueue(queue* q){
+void destroyQueue(queue* q, int freeData){
 	
 	if(!isQueueEmpty(q))
-		destroyData(q);
+		destroyData(q,freeData);
 
 	free(q);
 	return;

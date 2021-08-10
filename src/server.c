@@ -149,11 +149,14 @@ int main(int argc, char* argv[]){
 	for(int i = 0; i < workerNum; i++){
 		pthread_join(tid[i],NULL);
 	}
-
+	
 	unlink(sockname);
-	destroyQueue(requestQueue);
+	free(tid);
+	destroyQueue(requestQueue,1);
 	destroyConfiguration(config);
-	 puts("terminooo");
+	destroy_fileStorage(storage);
+	
+	puts("terminooo");
 
 	return 0;
 }
@@ -301,7 +304,6 @@ void* workerFun(){
 		//leggo operazione
 		
 		ret = readn(fd,reqBuf,OP_REQUEST_SIZE);
-		printf("letto %s %d \n",reqBuf, ret);
 		if(ret == 0){
 			clientExit(fd);
 			continue;
@@ -326,7 +328,8 @@ void* workerFun(){
 				die_on_se(getFlags(fd, &flags))
 
 				ret = open_file(storage,fd,pathname,flags,fdPending);				
-				
+				if(!flags || ret != SUCCESS)
+					free(pathname);
 					
 			}	
 			
@@ -358,16 +361,17 @@ void* workerFun(){
 
 
 				ret = write_append_file(storage,fd,pathname,size,content,ejected,fdPending); 
-				
-				
+			
+				free(content);
+
 
 				// mando i file espulsi
 				while(ejected->ndata){
 					fT* ef = dequeue(ejected);	
 					die_on_se(sendFile(fd,ef->pathname,ef->size,ef->content))
 
+					free(ef->pathname);
 					freeFile(ef);
-
 				}
 					
 					
@@ -411,7 +415,7 @@ void* workerFun(){
 					
 				
 				ret = remove_file(storage,fd,pathname,fdPending);
-					
+				
 			}
 			break;
 
@@ -431,6 +435,7 @@ void* workerFun(){
 						if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
 							return NULL;
 						}
+						free(ef->pathname);
 						freeFile(ef);
 
 					}
@@ -444,7 +449,6 @@ void* workerFun(){
 
 
 				ret = lock_file(storage,fd,pathname); 
-				
 				// se ret == LOCKED lascio il client in attesa
 
 				if(ret != LOCKED)
@@ -463,8 +467,6 @@ void* workerFun(){
 
 				die_on_se(ret = unlock_file(storage,fd,pathname,&newFdLock))
 				
-
-				
 				// notifico eventuale client in attesa che adesso ha la lock sul file
 				if(newFdLock){
 					die_on_se(sendResponseCode(newFdLock,SUCCESS))
@@ -480,7 +482,13 @@ void* workerFun(){
 				die_on_se(sendResponseCode(fd,BAD_REQUEST))
 			}
 		}
-	
+
+		if(pathname && op != OPEN_FILE){
+			free(pathname);
+		}
+		pathname = NULL;
+
+
 		if(op != READ_FILE && op != LOCK_FILE){
 			// invio risposta al client
 			die_on_se(sendResponseCode(fd,ret))
@@ -494,6 +502,10 @@ void* workerFun(){
 		sprintf(bufPipe,"%d",fd);
 		write(pfd[1],bufPipe,4);
 	}
+
+	destroyQueue(ejected,1);
+	destroyQueue(fdPending,1);
+
 	return NULL;
 }
 

@@ -51,6 +51,8 @@ typedef struct{
 
 fsT* create_fileStorage(size_t maxCapacity, int maxFileNum);
 
+int destroy_fileStorage(fsT* storage);
+
 int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPending);
 
 int close_file(fsT* storage, int fdClient, char* pathname);

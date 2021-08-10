@@ -34,11 +34,21 @@ fsT* create_fileStorage(size_t maxCapacity, int maxFileNum){
 	
 	storage->currCapacity = 0;
 	storage->currFileNum = 0;
-	ec(storage->filesQueue = createQueue(freeFile,cmpFile),NULL,"create queue",return NULL)
+	ec(storage->filesQueue = createQueue(NULL,cmpFile),NULL,"create queue",return NULL)
 
 	ec_n(pthread_mutex_init(&(storage->smux),NULL),0,"pthread mutex init storage",return NULL)
 
 	return storage;	
+}
+
+
+int destroy_fileStorage(fsT* storage){
+
+	destroyQueue(storage->filesQueue,0);
+	icl_hash_destroy(storage->ht,free,freeFile);
+	free(storage);
+	return 0;
+
 }
 
 
@@ -565,7 +575,7 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 		}
 		
 
-		// rimuovo il file dallo storage senza inviarlo al client
+		// rimuovo il file dallo storage senza inviarlo (per il momento) al client
 		chk_neg1(store_remove(storage,ef,1),SERVER_ERROR)
 	}
 	
@@ -625,13 +635,13 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 int store_remove(fsT* storage, fT* fPtr, int freeData){
 	char* rmpath = fPtr->pathname;
 	// rimuovo dalla coda di rimpiazzamento
-	if(removeFromQueue(storage->filesQueue,fPtr,freeData) != 0)
+	if(removeFromQueue(storage->filesQueue,fPtr,0) != 0)
 		return -1; 
 
 	// rimuovo dalla hash table
 
 	if(freeData){
-		if(icl_hash_delete(storage->ht,rmpath,free,NULL) == -1)
+		if(icl_hash_delete(storage->ht,rmpath,free,freeFile) == -1)
 			return -1; 
 	}else{
 		if(icl_hash_delete(storage->ht,rmpath,NULL,NULL) == -1)
@@ -659,12 +669,15 @@ fT* fileCopy(fT* fPtr){
 
 		if(cp->content)
 			free(cp->content);
-
+	
 		free(cp);
 		
 		return NULL;
 	}
-		
+
+	// non copio la coda dei fd che hanno aperto il file e di quelli in attesa
+	cp->fdopen = NULL;
+	cp->fdpending = NULL;
 	memcpy(cp->content,fPtr->content,cp->size);
 
 	return cp;
@@ -710,10 +723,12 @@ fT* eject_file(queue* fq,char* pathname, int fdClient, int chkEmpty){
 
 
 void freeFile(void* fptr){
-	fT* fPtr = fptr;
+	fT* fPtr = (fT*) fptr;
 	if(fPtr){
 		free(fPtr->content);
-		//free(fPtr->pathname);
+		//if(fPtr->pathname) free(fPtr->pathname);
+		destroyQueue(fPtr->fdopen,1);
+		destroyQueue(fPtr->fdpending,1);
 		free(fPtr);
 	}
 	return;
