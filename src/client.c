@@ -53,14 +53,14 @@ int isPointDir(char *dir){
     if(strcmp(dir,".") && strcmp(dir,".."))
         return 0;
 
-    return 1;
+    return -1;
 }
 int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 	
 	DIR *d;
 	
     //tento di aprire la directory 
-	ec(d=opendir(pathname),NULL,"opendir",return 1)
+	ec(d=opendir(pathname),NULL,"opendir",return -1)
 
     
     //printf("Directory: %s\n",name);
@@ -83,9 +83,9 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
             if(file->d_type == DT_DIR){
                 //if(n != 0)
 				recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
-				if(errno){
+				if(errno && errno != ECONNRESET){
 					errno = 0;
-					return 1;
+					return -1;
 				}
 					
 
@@ -96,48 +96,48 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 						if(limited)
 							(*n)--;
 						if(closeFile(absoluteName) != 0){
-							if(errno){
+							if(errno && errno != ECONNRESET){
 								perror("closeFile");
-								return 1;
+								return -1;
 							}
 						}	
-					}else if(errno){
+					}else if(errno && errno != ECONNRESET){
 						closedir(d);
 						perror("writeFile");
-						return 1;
+						return -1;
 					}	
 					
 				}else{
-					if(errno){
+					if(errno && errno != ECONNRESET){
 						closedir(d);
 						perror("openFile");
-						return 1;
+						return -1;
 					}
 					void* content = NULL;
 					size_t size = 0;
 					// provo ad aprire il file senza flag e a fare la append
 					if(openFile(absoluteName,0) == 0){
-						ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return 1)
+						ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return -1)
 
 						if(appendToFile(absoluteName,content,size,dirname) == 0){
 							if(limited)
 								(*n)--;
 							if(closeFile(absoluteName) != 0){
-								if(errno){
+								if(errno && errno != ECONNRESET){
 									perror("closeFile");
-									return 1;
+									return -1;
 								}
 							}
-						}else if(errno){
+						}else if(errno && errno != ECONNRESET){
 							perror("appendToFile");
 							free(content);
 							free(pathname);
-							return 1;
+							return -1;
 						} 
-					}else if(errno){
+					}else if(errno && errno != ECONNRESET){
 						perror("openFile");
 						free(pathname);
-						return 1;
+						return -1;
 					}
 					free(content);
 				} 
@@ -161,19 +161,19 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		if(!(path = strtok_r(args,",",&save))){
 			errno = EINVAL;
 			perror("dirname");
-			return 1;
+			return -1;
 		}
 		char* pathname = realpath(path,NULL);
 		if(!pathname){
 			free(path);
 			perror("realpath");
-			return 1;
+			return -1;
 		}
 		if(!isDirectory(pathname)){
 			if(PRINTS)
 				fprintf(stderr,"%s non e' una directory\n",pathname);
 			free(pathname);
-			return 1;
+			return -1;
 		}
 
 		char* nfile;
@@ -182,7 +182,7 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 				free(pathname);
 				errno = EINVAL;
 				perror("n=");
-				return 1;
+				return -1;
 			}
 		}
 		//free(path);
@@ -190,14 +190,14 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		//printf("scrivo dir: %s n file = %d\n",pathname,n);
 		int limited = 0;
 		if(n > 0)
-			limited = 1;
+			limited = -1;
 
 		
 		int ret = recursiveVisit(pathname,&n,limited,dirname);
 		free(pathname);
 
-		if(ret == 1){
-			return 1;
+		if(ret == -1){
+			return -1;
 		}
 		nanosleep(reqTime,NULL);
 		
@@ -215,13 +215,13 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 			if(!pathname){
 				free(pathname);
 				perror("realpath");
-				return 1;
+				return -1;
 			}
 			//controllo che sia effettivamente un file regolare
 			if(!isRegularFile(pathname)){
 				fprintf(stderr,"%s non e' un file regolare\n",pathname);
 				free(pathname);
-				return 1;
+				return -1;
 			}
 
 			if(openFile(pathname,O_CREATE | O_LOCK) == 0){
@@ -229,46 +229,46 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 					if(writeFile(pathname,dirname) == 0){
 
 						if(closeFile(pathname) != 0){
-							if(errno){
+							if(errno && errno != ECONNRESET){
 								perror("closeFile");
-								return 1;
+								return -1;
 							}
 						}
-					}else if(errno){
+					}else if(errno && errno != ECONNRESET){
 						perror("writeFile");
 						free(pathname);
-						return 1;
+						return -1;
 					} 
 					
 			}else{
-				if(errno){
+				if(errno && errno != ECONNRESET){
 					perror("openFile");
 					free(pathname);
-					return 1;
+					return -1;
 				}
 
 				// provo ad aprire il file senza flag e a fare la append
 				if(openFile(pathname,0) == 0){
-					ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return 1)
+					ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return -1)
 
 					if(appendToFile(pathname,content,size,dirname) == 0){
 						
 						if(closeFile(pathname) != 0){
-							if(errno){
+							if(errno && errno != ECONNRESET){
 								perror("closeFile");
-								return 1;
+								return -1;
 							}
 						}
-					}else if(errno){
+					}else if(errno && errno != ECONNRESET){
 						perror("appendToFile");
 						free(content);
 						free(pathname);
-						return 1;
+						return -1;
 					} 
-				}if(errno){
+				}if(errno && errno != ECONNRESET){
 					perror("openFile");
 					free(pathname);
-					return 1;
+					return -1;
 				}
 				free(content);
 			} 
@@ -305,26 +305,26 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 					if(readFile(path,&buf,&size) == 0){
 						if(dirname){
 							if(writeFileOnDisk(dirname,path,buf,size) != 0){
-								return 1;
+								return -1;
 							}
 						}
 						if(buf)
 							free(buf);
 
 						if(closeFile(path) != 0){
-							if(errno){
+							if(errno && errno != ECONNRESET){
 								perror("closeFile");
-								return 1;
+								return -1;
 							}
 						}
-					}else if(errno){
+					}else if(errno && errno != ECONNRESET){
 							perror("readFile");
-							return 1;
+							return -1;
 					} 
 					
-			}else if(errno){
+			}else if(errno && errno != ECONNRESET){
 				perror("openFile");
-				return 1;
+				return -1;
 			} 
 			
 			//free(pathname);
@@ -340,7 +340,7 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 				if(isNumber(nfile,(long*)&n) != 0){
 					errno = EINVAL;
 					perror("n=");
-					return 1;
+					return -1;
 				}
 			}
 		}
@@ -363,16 +363,16 @@ int lockUnlockHandler(char opt,char* args,struct timespec* reqTime){
 	while(path){
 		if(opt == 'l'){
 			if(lockFile(path) != 0){ 
-				if(errno){
+				if(errno && errno != ECONNRESET){
 					perror("lockFile");
-					return 1;
+					return -1;
 				} 
 			}
 		}else{ // unlock
 			if(unlockFile(path) != 0){ 
-				if(errno){
+				if(errno && errno != ECONNRESET){
 					perror("unlockFile");
-					return 1;
+					return -1;
 				} 
 			}
 		}
@@ -399,14 +399,12 @@ int removeHandler(char* args,struct timespec* reqTime){
 		if(!path){
 			free(path);
 			perror("realpath");
-			return 1;
+			return -1;
 		}
 		
-		if(removeFile(path) == 0){
-			//sperror("removeFile");
-		}else if(errno){
-				perror("removeFile");
-				return 1;
+		if(removeFile(path) != 0 && errno && errno != ECONNRESET){
+			perror("removeFile");
+			return -1;
 		}
 
 		path = strtok_r(NULL,",",&save);
@@ -457,7 +455,7 @@ int main(int argc, char* argv[]){
 	char* dirname = NULL;
 
 	int finish = 0;
-	//ptr per scorrere la lista degli argomenti passati al client
+
 	while(!finish && args->ndata){
 		op = dequeue(args);
 		nextOp = NULL;
@@ -543,16 +541,18 @@ int main(int argc, char* argv[]){
 			break;
 
 			case 'l':
-				lockUnlockHandler(op->opt,op->arg,&reqTime);
+				if(lockUnlockHandler(op->opt,op->arg,&reqTime) != 0)
+					finish = 1;
 			break;
 
 			case 'u':
-				lockUnlockHandler(op->opt,op->arg,&reqTime);
+				if(lockUnlockHandler(op->opt,op->arg,&reqTime) != 0)
+					finish = 1;
 			break;
 
 			case 'c':
-				removeHandler(op->arg,&reqTime);
-				//fprintf(stdout,"rimuovo %s\n",op->arg);
+				if(removeHandler(op->arg,&reqTime) != 0)
+					finish = 1;
 			break;
 
 			default:;
@@ -561,8 +561,7 @@ int main(int argc, char* argv[]){
 		freeOp(op);
 		if(dirname)
 			free(dirname);
-		// free(op->arg);
-		// free(op);
+		
 	}
 	
 	

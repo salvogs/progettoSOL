@@ -268,7 +268,7 @@ int masterFun(){
 }
 
 void* workerFun(){
-	int op = 0,ret = 0,end = 0;
+	int op = 0,ret = 0;
 	
 	char bufPipe[BUFPIPESIZE] = "";
 	
@@ -281,7 +281,7 @@ void* workerFun(){
 	queue* fdPending = createQueue(free,NULL);
 	chk_null(ejected,NULL);
 	
-	while(!end){
+	while(1){
 		
 		LOCK(&request_mux);
 		while(isQueueEmpty(requestQueue))
