@@ -89,6 +89,8 @@ int readFileFromDisk(const char* pathname, void** content, size_t* size){
 	size_t fsize = info.st_size;
 
     if(fsize == 0){
+        *content = NULL;
+        *size = 0;
         return 0;
     }
 
@@ -155,6 +157,7 @@ int writeFileOnDisk(const char* dirname,const char* path, void* buf, size_t size
     }
 
 	while(token){
+        errno = 0;
 		if(mkdir(token,S_IRWXU) != 0 && errno != EEXIST){
             perror("mkdir");
 			free(newPath);

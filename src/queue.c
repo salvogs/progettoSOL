@@ -23,7 +23,7 @@ queue* createQueue(void (*freeFun)(void*), int (*cmpFun)(void*,void*)){
 	
 	q->ndata = 0;
 	//default free and cmp function
-	q->freeFun = freeFun ? freeFun : free;
+	q->freeFun = freeFun ? freeFun : NULL;
 	q->cmpFun = cmpFun ? cmpFun : cmpInt;
 	
 	q->head = q->tail = NULL;
@@ -100,7 +100,7 @@ int removeFromHead(queue* q, int freeData){
 	if(newHead == NULL){
 		q->ndata--;
 		if(freeData){
-			q->freeFun(q->head->data);
+			if(q->freeFun) q->freeFun(q->head->data);
 		}
 		free(q->head);
 		q->head = NULL;
@@ -111,7 +111,7 @@ int removeFromHead(queue* q, int freeData){
 	newHead->prev = NULL;
 
 	if(freeData){
-		q->freeFun(q->head->data);
+		if(q->freeFun) q->freeFun(q->head->data);
 	}
 	free(q->head);
 	
@@ -152,7 +152,7 @@ int removeFromQueue(queue* q, void* elem, int freeData){
 	}
 
 	if(freeData){
-		q->freeFun(curr->data);
+		if(q->freeFun) q->freeFun(curr->data);
 	}
 	free(curr);
 	q->ndata--;
@@ -186,7 +186,7 @@ void destroyData(queue* q, int freeData){
 		q->ndata--;
 		q->head = q->head->next;
 		if(freeData){
-			q->freeFun(tmp->data);
+			if(q->freeFun) q->freeFun(tmp->data);
 		}
 		free(tmp);
 		tmp = q->head;

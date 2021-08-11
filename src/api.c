@@ -27,6 +27,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 
 		if(errno == ENOENT){ //socket non esiste ancora
 			if(t >= abstime.tv_nsec){
+				errno = ETIME;
 				return -1;
 			}
 		
@@ -93,7 +94,7 @@ int openFile(const char* pathname, int flags){
 	
 	PRINTER("OPEN FILE",pathname,response)
 
-	//free(path);
+	
 
 	if(response != SUCCESS){
 		return -1;
@@ -106,9 +107,6 @@ int openFile(const char* pathname, int flags){
 
 int closeFile(const char* pathname){
 
-	// char* path = realpath(pathname,NULL);
-	// ec(path,NULL,"pathname",return -1);
-
 	// closeFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 
@@ -120,11 +118,9 @@ int closeFile(const char* pathname){
 
 
 	snprintf(req,reqLen,"%d%4d%s",CLOSE_FILE,(int)strlen(pathname),pathname);
-	//printf("reqLen: %d\n req: %s\n",reqLen,req);
-	
+		
 		
 	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		//perror("writen");
 		free(req);
 		return -1;
 	}
@@ -135,7 +131,6 @@ int closeFile(const char* pathname){
 	
 	PRINTER("CLOSE FILE",pathname,response)
 
-	// free(path);
 
 	if(response != SUCCESS){
 		return -1;
@@ -156,29 +151,28 @@ int writeFile(const char* pathname, const char* dirname){
 
 	chk_neg1(readFileFromDisk(pathname,&content,&fsize),-1)
 	
-	if(fsize == 0){
-		//non faccio nemmeno richiesta al server
-		PRINTER("WRITE FILE",pathname,EMPTY_FILE)
-
-		PRINT_WRITE(fsize)
-	
-
-		return EMPTY_FILE;
-	}
 	// writeFile:1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)MAX_FILESIZE_LENByte(dimensione file)dimensione_fileByte(file vero e proprio)
+	int reqLen = 0;
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + MAX_FILESIZE_LEN + fsize + 1; //+1 finale percheè snprintf include anche il \0
+	if(fsize == 0)// file vuoto
+		reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + MAX_FILESIZE_LEN + 1; 
+	else
+		reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + MAX_FILESIZE_LEN + fsize + 1; 
+	
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)
-	
 
-	snprintf(req,reqLen,"%d%4d%s%010ld",WRITE_FILE,(int)strlen(pathname),pathname,fsize); // fsize 10 char max
-	memcpy((req + strlen(req)),content,fsize);
+
+	snprintf(req,reqLen,"%d%4d%s%010ld",WRITE_FILE,(int)strlen(pathname),pathname,fsize);
+		
+	if(fsize){
+		memcpy((req + strlen(req)),content,fsize);
+		if(content) free(content);
+	}
 
 	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
 
-	free(content);
 
 
 	
@@ -193,10 +187,7 @@ int writeFile(const char* pathname, const char* dirname){
 		response = getResponseCode(FD_CLIENT);	
 	}
 	
-	// // leggo risposta della write
-	// if(response == END_SENDING_FILE){
-	// 	response = getResponseCode(FD_CLIENT);
-	// }
+	
 	
 	PRINTER("WRITE FILE",pathname,response)
 	if(response == SUCCESS){
@@ -213,12 +204,12 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 
 	if(size == 0){
 		//non faccio nemmeno richiesta al server
-		PRINTER("WRITE FILE",pathname,EMPTY_FILE)
+		PRINTER("APPEND TO FILE",pathname,EMPTY_FILE)
 
 		
 		PRINT_WRITE(size)
 
-		return EMPTY_FILE;
+		return 0;
 	}
 	// appendToFile:1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)MAX_FILESIZE_LENByte(dimensione file)dimensione_fileByte(file vero e proprio)
 
@@ -246,10 +237,6 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 		response = getResponseCode(FD_CLIENT);	
 	}
 	
-	// // leggo risposta della write
-	// if(response == END_SENDING_FILE){
-	// 	response = getResponseCode(FD_CLIENT);
-	// }
 	
 	PRINTER("APPEND TO FILE",pathname,response)
 	if(response == SUCCESS){

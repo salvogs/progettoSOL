@@ -83,7 +83,7 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
             if(file->d_type == DT_DIR){
                 //if(n != 0)
 				recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
-				if(errno && errno != ECONNRESET){
+				if(errno && errno != ECONNRESET && errno != EPIPE){
 					errno = 0;
 					return -1;
 				}
@@ -96,19 +96,19 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 						if(limited)
 							(*n)--;
 						if(closeFile(absoluteName) != 0){
-							if(errno && errno != ECONNRESET){
+							if(errno && errno != ECONNRESET && errno != EPIPE){
 								perror("closeFile");
 								return -1;
 							}
 						}	
-					}else if(errno && errno != ECONNRESET){
+					}else if(errno && errno != ECONNRESET && errno != EPIPE){
 						closedir(d);
 						perror("writeFile");
 						return -1;
 					}	
 					
 				}else{
-					if(errno && errno != ECONNRESET){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
 						closedir(d);
 						perror("openFile");
 						return -1;
@@ -123,18 +123,18 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 							if(limited)
 								(*n)--;
 							if(closeFile(absoluteName) != 0){
-								if(errno && errno != ECONNRESET){
+								if(errno && errno != ECONNRESET && errno != EPIPE){
 									perror("closeFile");
 									return -1;
 								}
 							}
-						}else if(errno && errno != ECONNRESET){
+						}else if(errno && errno != ECONNRESET && errno != EPIPE){
 							perror("appendToFile");
 							free(content);
 							free(pathname);
 							return -1;
 						} 
-					}else if(errno && errno != ECONNRESET){
+					}else if(errno && errno != ECONNRESET && errno != EPIPE){
 						perror("openFile");
 						free(pathname);
 						return -1;
@@ -165,7 +165,6 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		}
 		char* pathname = realpath(path,NULL);
 		if(!pathname){
-			free(path);
 			perror("realpath");
 			return -1;
 		}
@@ -203,17 +202,15 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		
 		// openFile(args,O_CREATE | O_LOCK);
 	}else{ // opt = W
-		char* pathname;
-		void* content = NULL;
+		char* pathname = NULL;
 		size_t size = 0;
 
 		path = strtok_r(args,",",&save);
 
 		while(path){
 			errno = 0;
-			pathname =  realpath(path,NULL);
+			pathname = realpath(path,NULL);
 			if(!pathname){
-				free(pathname);
 				perror("realpath");
 				return -1;
 			}
@@ -229,19 +226,19 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 					if(writeFile(pathname,dirname) == 0){
 
 						if(closeFile(pathname) != 0){
-							if(errno && errno != ECONNRESET){
+							if(errno && errno != ECONNRESET && errno != EPIPE){
 								perror("closeFile");
 								return -1;
 							}
 						}
-					}else if(errno && errno != ECONNRESET){
+					}else if(errno && errno != ECONNRESET && errno != EPIPE){
 						perror("writeFile");
 						free(pathname);
 						return -1;
 					} 
 					
 			}else{
-				if(errno && errno != ECONNRESET){
+				if(errno && errno != ECONNRESET && errno != EPIPE){
 					perror("openFile");
 					free(pathname);
 					return -1;
@@ -249,35 +246,38 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 				// provo ad aprire il file senza flag e a fare la append
 				if(openFile(pathname,0) == 0){
+					void* content = NULL;
 					ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return -1)
 
 					if(appendToFile(pathname,content,size,dirname) == 0){
 						
 						if(closeFile(pathname) != 0){
-							if(errno && errno != ECONNRESET){
+							if(errno && errno != ECONNRESET && errno != EPIPE){
 								perror("closeFile");
 								return -1;
 							}
 						}
-					}else if(errno && errno != ECONNRESET){
+					}else if(errno && errno != ECONNRESET && errno != EPIPE){
 						perror("appendToFile");
-						free(content);
+						if(content) free(content);
 						free(pathname);
 						return -1;
 					} 
-				}if(errno && errno != ECONNRESET){
+					if(content) free(content);
+
+					
+				}if(errno && errno != ECONNRESET && errno != EPIPE){
 					perror("openFile");
 					free(pathname);
 					return -1;
 				}
-				free(content);
 			} 
 			
 			free(pathname);
 			path = strtok_r(NULL,",",&save);
 			nanosleep(reqTime,NULL);
 		}
-		// free(args);
+		
 	}
 
 	return 0;
@@ -308,21 +308,20 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 								return -1;
 							}
 						}
-						if(buf)
-							free(buf);
+						if(buf)	free(buf);
 
 						if(closeFile(path) != 0){
-							if(errno && errno != ECONNRESET){
+							if(errno && errno != ECONNRESET && errno != EPIPE){
 								perror("closeFile");
 								return -1;
 							}
 						}
-					}else if(errno && errno != ECONNRESET){
+					}else if(errno && errno != ECONNRESET && errno != EPIPE){
 							perror("readFile");
 							return -1;
 					} 
 					
-			}else if(errno && errno != ECONNRESET){
+			}else if(errno && errno != ECONNRESET && errno != EPIPE){
 				perror("openFile");
 				return -1;
 			} 
@@ -363,14 +362,14 @@ int lockUnlockHandler(char opt,char* args,struct timespec* reqTime){
 	while(path){
 		if(opt == 'l'){
 			if(lockFile(path) != 0){ 
-				if(errno && errno != ECONNRESET){
+				if(errno && errno != ECONNRESET && errno != EPIPE){
 					perror("lockFile");
 					return -1;
 				} 
 			}
 		}else{ // unlock
 			if(unlockFile(path) != 0){ 
-				if(errno && errno != ECONNRESET){
+				if(errno && errno != ECONNRESET && errno != EPIPE){
 					perror("unlockFile");
 					return -1;
 				} 
@@ -397,12 +396,11 @@ int removeHandler(char* args,struct timespec* reqTime){
 
 	while(path){
 		if(!path){
-			free(path);
 			perror("realpath");
 			return -1;
 		}
 		
-		if(removeFile(path) != 0 && errno && errno != ECONNRESET){
+		if(removeFile(path) != 0 && errno && errno != ECONNRESET && errno != EPIPE){
 			perror("removeFile");
 			return -1;
 		}
