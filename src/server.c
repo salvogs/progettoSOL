@@ -45,8 +45,10 @@ fsT* storage;
 volatile sig_atomic_t noMoreClient = 0;
 volatile sig_atomic_t noMoreRequest = 0;
 
-int clientNum = 0;
 
+
+int clientNum = 0;
+pthread_mutex_t clientMux = PTHREAD_MUTEX_INITIALIZER;
 
 void signalHandler(int signum){
 	printf("ricevuto %d\n",signum);
@@ -115,7 +117,7 @@ int main(int argc, char* argv[]){
 
 	// destroyConfiguration(config);
 
-	ec(requestQueue = createQueue(free,NULL),NULL,"creazione coda",return 1);
+	ec(requestQueue = createQueue(NULL,NULL),NULL,"creazione coda",return 1);
 	
 	ec(pipe(pfd),-1,"creazione pipe",return 1)
 	
@@ -152,7 +154,7 @@ int main(int argc, char* argv[]){
 	
 	unlink(sockname);
 	free(tid);
-	destroyQueue(requestQueue,1);
+	destroyQueue(requestQueue,0);
 	destroyConfiguration(config);
 	destroy_fileStorage(storage);
 	
@@ -216,9 +218,18 @@ int masterFun(){
 			if(noMoreClient){
 				puts("no more client");
 				FD_CLR(fd_skt,&set);
+
+				//se era il max fd allora decremento il max
+				if(fd_skt == fd_num)
+					fd_num--;
 				close(fd_skt);
-				if(clientNum == 0)
+
+				LOCK(&(clientMux))
+				if(clientNum == 0){
+					UNLOCK(&(clientMux))
 					break;
+				}
+				UNLOCK(&(clientMux))
 			}
 			continue;
 		}
@@ -229,7 +240,9 @@ int masterFun(){
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
 					fprintf(stdout,"client connesso %d\n",fd_client);
+					LOCK(&(clientMux))
 					clientNum++;
+					UNLOCK(&(clientMux))
 					//nella mascheraa set metto a 1 il bit della fd_client(ora è attivo)
 					FD_SET(fd_client,&set);
 					//tengo sempre aggiornato il descrittore con indice massimo
@@ -237,10 +250,14 @@ int masterFun(){
 						fd_num = fd_client;
 
 				}else if(fd == pfd[0]){
-					read(fd,bufPipe,BUFPIPESIZE);
-					if((fd_client = atoi(bufPipe)) == 0) // da sistemare
-						return 1;
-					
+					//read(fd,bufPipe,BUFPIPESIZE);
+					read(fd,&fd_client,sizeof(int));
+					// if((fd_client = atoi(bufPipe)) == 0) // da sistemare
+					// 	return 1;
+					// printf("pipee: %d\n",fd_client);
+					if(fd_client == 0) // ultimo client disconnesso
+						return 0;
+						// break; 
 					
 					FD_SET(fd_client,&set);
 
@@ -270,7 +287,7 @@ int masterFun(){
 void* workerFun(){
 	int op = 0,ret = 0;
 	
-	char bufPipe[BUFPIPESIZE] = "";
+	// char bufPipe[BUFPIPESIZE] = "";
 	
 	char reqBuf[OP_REQUEST_SIZE] = "";
 
@@ -279,7 +296,7 @@ void* workerFun(){
 	queue* ejected = createQueue(freeFile,cmpFile);
 	chk_null(ejected,NULL);
 	queue* fdPending = createQueue(free,NULL);
-	chk_null(ejected,NULL);
+	chk_null(fdPending,NULL);
 	
 	while(1){
 		
@@ -314,7 +331,6 @@ void* workerFun(){
 		}
 		
 		op = reqBuf[0] - '0';
-		
 		
 	
 		switch(op){
@@ -494,20 +510,58 @@ void* workerFun(){
 			die_on_se(sendResponseCode(fd,ret))
 		}
 
+		// notifico i client che erano in attesa di acquisire lock
 		while(fdPending->ndata){
 			die_on_se(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
 		}
 
 
-		sprintf(bufPipe,"%d",fd);
-		write(pfd[1],bufPipe,4);
+		// sprintf(bufPipe,"%d",fd);
+		write(pfd[1],&fd,sizeof(int));
 	}
 
 	destroyQueue(ejected,1);
-	destroyQueue(fdPending,1);
+	destroyQueue(fdPending,0);
 
 	return NULL;
 }
+
+
+int clientExit(int fd){
+
+	queue* fdPending = createQueue(free,NULL);
+	chk_null(fdPending,1);
+
+	die_on_se(remove_client(storage,fd,fdPending));
+
+	// notifico il client che erano in attesa di acquisire lock
+	while(fdPending->ndata){
+		die_on_se(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
+	}
+
+
+	fprintf(stdout,"client %d disconnesso\n",fd);
+	LOCK(&(clientMux))
+	clientNum--;
+
+	close(fd);
+
+	// se era stato inviato SIGHUP ed fd era l'ultimo client
+	if(noMoreClient && !clientNum){ 
+		// messaggio che fa capire al dispatcher che adesso puo' terminare
+		int ret = 0; 
+		write(pfd[1],&ret,sizeof(int));
+	}
+	UNLOCK(&(clientMux))
+
+	destroyQueue(fdPending,0);
+
+
+
+	return 0;
+}
+
+
 
 pthread_t* spawnThread(int n){
 	pthread_t* tid = malloc(sizeof(pthread_t)*n);
@@ -521,13 +575,7 @@ pthread_t* spawnThread(int n){
 }
 
 
-void clientExit(int fd){
-	fprintf(stdout,"client %d disconnesso\n",fd);
-	clientNum--;
-	close(fd);
 
-	return;
-}
 
 
 int getPathname(int fd,char** pathname){
@@ -584,8 +632,10 @@ int sendResponseCode(int fd,int res){
 	snprintf(resBuf,RESPONSE_CODE_SIZE+1,"%2d",res);
 
 	if(writen(fd,&resBuf,RESPONSE_CODE_SIZE) == -1){
-		perror("response code writen");
-		return -1;
+		if(errno && errno != EPIPE && errno != ECONNRESET && errno != EBADF){
+			perror("response code writen");
+			return SERVER_ERROR;
+		}
 	}
 	
 	return 0;
@@ -632,9 +682,12 @@ int sendFile(int fd,char* pathname, size_t size, void* content){
 		memcpy((res + strlen(res)),content,size);
 	}
 	if(writen(fd,res,resLen-1) == -1){
-		perror("writen");
-		free(res);
-		return -1;
+		if(errno && errno != EPIPE && errno != ECONNRESET && errno == EBADF){
+			perror("send file writen");
+			printf("errno %d\n",errno);
+			free(res);
+			return SERVER_ERROR;
+		}
 	}
 	free(res);
 
@@ -701,6 +754,7 @@ int getFile(int fd, size_t* size, void** content){
 	}
   
 	size_t size_ = 0;	
+	void* content_ = NULL;
 
 	if(isNumber(fileSize,(long*)&size_) != 0){
 		free(fileSize);
@@ -708,21 +762,25 @@ int getFile(int fd, size_t* size, void** content){
 	}
 	free(fileSize);
 
-	void* content_ = (void*) malloc(size_);
-	chk_null(content_,SERVER_ERROR)
+	if(size_){
 
-	//leggo contenuto file
-	ret = readn(fd,content_,size_);
+		content_ = (void*) malloc(size_);
+		chk_null(content_,SERVER_ERROR)
 
-	if(ret == 0){
-		errno = ECONNRESET;
-		free(content_);
-		return -1;
+		//leggo contenuto file
+		ret = readn(fd,content_,size_);
+
+		if(ret == 0){
+			errno = ECONNRESET;
+			free(content_);
+			return -1;
+		}
+		if(ret == -1){
+			free(content_);
+			return SERVER_ERROR;
+		}
 	}
-	if(ret == -1){
-		free(content_);
-		return SERVER_ERROR;
-	}
+
 
 
 	*size = size_;

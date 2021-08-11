@@ -3,7 +3,7 @@
 
 
 
-void clientExit(int fd);
+int clientExit(int fd);
 
 pthread_t* spawnThread(int n);
 
