@@ -69,6 +69,7 @@ int lock_file(fsT* storage, int fdClient, char* pathname);
 
 int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock);
 
+int remove_client(fsT* storage, int fdClient, queue* fdPending);
 
 void freeFile(void* fptr);
 

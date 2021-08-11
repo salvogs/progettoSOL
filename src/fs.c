@@ -243,7 +243,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		fPtr->fdwrite = 0;
 	}
 
-	if(!ret){
+	if(!ret && size){ // modifico il contenuto solo se e' stato effettivamente ricevuto
 		
 
 
@@ -523,7 +523,7 @@ int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock){
 	UNLOCK(&(fPtr->mux))
 	
 	int ret = SUCCESS;
-	// se un altro client ha lockato il file
+	// se fdClient ha lockato il file
 	if(fPtr->fdlock == fdClient){
 		// controllo se qualcuno era in attesa di acquisire la lock
 		if(fPtr->fdpending->ndata){
@@ -596,7 +596,7 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 	fPtr->fdlock = fdClient;
 	fPtr->fdwrite = fdClient;
 
-	if(!(fPtr->fdopen = createQueue(free,NULL)) || !(fPtr->fdpending = createQueue(free,NULL))){
+	if(!(fPtr->fdopen = createQueue(NULL,NULL)) || !(fPtr->fdpending = createQueue(NULL,NULL))){
 		free(fPtr);
 		return SERVER_ERROR;
 	}
@@ -656,6 +656,84 @@ int store_remove(fsT* storage, fT* fPtr, int freeData){
 
 
 
+int remove_client(fsT* storage, int fdClient, queue* fdPending){
+	
+	// lock dello storage
+	LOCK(&(storage->smux));
+
+	int nfiles = storage->filesQueue->ndata;
+	data* curr = storage->filesQueue->head;
+	fT* fPtr = NULL;
+	int ret = SUCCESS;
+	int newFdLock = 0;
+
+	while(nfiles){
+		
+		fPtr = curr->data;
+
+		LOCK(&(fPtr->ordering))
+		LOCK(&(fPtr->mux))
+		
+		
+		// aspetto mentre qualcuno legge/scrive
+
+		while(fPtr->activeReaders || fPtr->activeWriters)
+			WAIT(&(fPtr->go),&(fPtr->mux));
+		
+		fPtr->activeWriters++;
+
+		UNLOCK(&(fPtr->ordering))
+		UNLOCK(&(fPtr->mux))
+
+
+		// rimuovo fdClient dai client che hanno aperto il file
+		removeFromQueue(fPtr->fdopen,CAST_FD(fdClient),1);
+
+		
+		
+		// se fdClient ha lockato il file lo rilascio
+		if(fPtr->fdlock == fdClient){
+			// controllo se qualcuno era in attesa di acquisire la lock
+			if(fPtr->fdpending->ndata){
+				if(!(newFdLock = (long)dequeue(fPtr->fdpending))){
+					ret = SERVER_ERROR;
+					break;
+				}
+
+				fPtr->fdlock = newFdLock;
+				// metto in coda ai client "da avvisare"
+				if(enqueue(fdPending,CAST_FD(newFdLock)) != 0){
+					ret = SERVER_ERROR;
+					break;
+				}
+
+			}else{
+				// reset lock
+				fPtr->fdlock = 0;
+			}
+		}else{
+			// altrimenti, se presente, lo tolgo da quelli in attesa di acquisirla
+			removeFromQueue(fPtr->fdpending,CAST_FD(fdClient),1);		
+		}
+
+
+		LOCK(&(fPtr->mux))
+
+		fPtr->activeWriters--;
+
+		SIGNAL(&(fPtr->go))
+
+		UNLOCK(&(fPtr->mux))
+
+
+		curr = curr->next;
+		nfiles--;
+	}
+	UNLOCK(&(storage->smux));
+
+	return ret;
+
+}
 
 fT* fileCopy(fT* fPtr){
 	fT* cp = NULL;
@@ -682,6 +760,9 @@ fT* fileCopy(fT* fPtr){
 
 	return cp;
 }
+
+
+
 
 
 fT* eject_file(queue* fq,char* pathname, int fdClient, int chkEmpty){
@@ -727,8 +808,8 @@ void freeFile(void* fptr){
 	if(fPtr){
 		free(fPtr->content);
 		//if(fPtr->pathname) free(fPtr->pathname);
-		destroyQueue(fPtr->fdopen,1);
-		destroyQueue(fPtr->fdpending,1);
+		destroyQueue(fPtr->fdopen,0);
+		destroyQueue(fPtr->fdpending,0);
 		free(fPtr);
 	}
 	return;
