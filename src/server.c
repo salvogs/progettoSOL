@@ -20,7 +20,6 @@
 
 
 #define BUFSIZE 2048
-#define BUFPIPESIZE 4
 #define DELIM_CONFIG_FILE ":"
 
 
@@ -80,7 +79,7 @@ int main(int argc, char* argv[]){
 	sigset_t set;
 	struct sigaction sact;
 
-	//maschero tutti i segnali finchè i gestori permanenti non sono istallati
+	//maschero tutti i segnali finchè i gestori permanenti non sono installati
 	ec(sigfillset(&set),-1,"sigfillset",return 1)
 	ec(pthread_sigmask(SIG_SETMASK,&set,NULL),-1,"pthread_sigmask",return 1)
 	memset(&sact,0,sizeof(sact));
@@ -90,15 +89,13 @@ int main(int argc, char* argv[]){
 	ec(sigaction(SIGQUIT,&sact,NULL),-1,"sigaction",return 1)
 	ec(sigaction(SIGHUP,&sact,NULL),-1,"sigaction",return 1)
 
-	sact.sa_handler = SIG_IGN;
-	ec(sigaction(SIGPIPE,&sact,NULL),-1,"sigaction",return 1)
 
 	//tolgo la maschera
 	ec(sigemptyset(&set),-1,"sigemptyset",return 1)
 	ec(pthread_sigmask(SIG_SETMASK,&set,NULL),-1,"pthread_sigmask",return 1)
 	
 	/*
-		per prima cosa effettuo il parsing del il file di configurazione 
+		effettuo il parsing del il file di configurazione 
 	*/
 	parseT* config = parseConfig(argv[1],DELIM_CONFIG_FILE);
 	chk_null(config,1);
@@ -111,11 +108,10 @@ int main(int argc, char* argv[]){
 		return 1;
 	
 
-	printf("MAXCAPACITY: %ld, MAXFILENUM: %d"
-		 "WORKERNUM %d, SOCKNAME %s, LOGPATH %s\n"\
+	printf("MAXCAPACITY: %ld, MAXFILENUM: %d "
+		 "WORKERNUM: %d SOCKNAME: %s LOGPATH: %s\n"\
 		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath);
 
-	// destroyConfiguration(config);
 
 	ec(requestQueue = createQueue(NULL,NULL),NULL,"creazione coda",return 1);
 	
@@ -125,8 +121,7 @@ int main(int argc, char* argv[]){
 
 
 	// devo spawnare i thread worker sempre in attesa di servire client
-
-
+	
 	pthread_t *tid; //array dove mantenere tid dei worker
 	tid = spawnThread(workerNum);
 	
@@ -152,10 +147,17 @@ int main(int argc, char* argv[]){
 		pthread_join(tid[i],NULL);
 	}
 	
+	destroyQueue(requestQueue,0);
+	close(pfd[0]);
+    close(pfd[1]);
 	unlink(sockname);
 	free(tid);
-	destroyQueue(requestQueue,0);
 	destroyConfiguration(config);
+	
+	// stampo sunto operazioni
+	printFinalInfo(storage);
+
+
 	destroy_fileStorage(storage);
 	
 	puts("terminooo");
@@ -198,8 +200,6 @@ int masterFun(){
 
 	FD_SET(pfd[0],&set);
 	
-	char bufPipe[BUFPIPESIZE];
-
 	
 	while(!noMoreRequest){
 		//usiamo la select per evitare che le read e le accept si blocchino
@@ -250,11 +250,10 @@ int masterFun(){
 						fd_num = fd_client;
 
 				}else if(fd == pfd[0]){
-					//read(fd,bufPipe,BUFPIPESIZE);
+					
 					read(fd,&fd_client,sizeof(int));
-					// if((fd_client = atoi(bufPipe)) == 0) // da sistemare
-					// 	return 1;
-					// printf("pipee: %d\n",fd_client);
+					
+					
 					if(fd_client == 0) // ultimo client disconnesso
 						return 0;
 						// break; 
@@ -286,9 +285,7 @@ int masterFun(){
 
 void* workerFun(){
 	int op = 0,ret = 0;
-	
-	// char bufPipe[BUFPIPESIZE] = "";
-	
+		
 	char reqBuf[OP_REQUEST_SIZE] = "";
 
 	char *pathname = NULL;
@@ -515,9 +512,8 @@ void* workerFun(){
 			die_on_se(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
 		}
 
-
-		// sprintf(bufPipe,"%d",fd);
-		write(pfd[1],&fd,sizeof(int));
+		// scrivo fd sulla pipe in comune col dispatcher
+		ec(write(pfd[1],&fd,sizeof(int)),-1,"write pipe",exit(EXIT_FAILURE));
 	}
 
 	destroyQueue(ejected,1);
@@ -550,7 +546,7 @@ int clientExit(int fd){
 	if(noMoreClient && !clientNum){ 
 		// messaggio che fa capire al dispatcher che adesso puo' terminare
 		int ret = 0; 
-		write(pfd[1],&ret,sizeof(int));
+		ec(write(pfd[1],&ret,sizeof(int)),-1,"write pipe",exit(EXIT_FAILURE));
 	}
 	UNLOCK(&(clientMux))
 
@@ -788,4 +784,29 @@ int getFile(int fd, size_t* size, void** content){
 
 	return 0;
 	
+}
+
+
+
+void printFinalInfo(fsT* storage){
+
+		
+	fprintf(stdout,"\033[0;32m---STATISTICHE FINALI---\n\033[0m");
+	
+	fprintf(stdout,"Max file memorizzati: %d\n",storage->maxFileNumStored);
+	fprintf(stdout,"Max Mbyte memorizzati: ~%.f\n",(float)(storage->maxCapacityStored/1000));
+	fprintf(stdout,"Esecuzioni dell'algoritmo di rimpiazzamento: %d\n",storage->tryEjectFile);
+	fprintf(stdout,"File espulsi: %d\n",storage->ejectedFileNum);
+
+	fprintf(stdout,"File presenti alla chiusura: %d\n",storage->currFileNum);
+	// stampo lista file (path) presenti alla chiusura
+	data* curr = storage->filesQueue->head;
+
+	while(curr){
+		fprintf(stdout,"%s\n",((fT*)(curr->data))->pathname);
+		curr = curr->next;
+	}
+
+	return;
+
 }

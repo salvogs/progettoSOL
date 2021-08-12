@@ -20,6 +20,14 @@ typedef struct{
 
 	pthread_mutex_t smux;
 
+	// stats
+
+	size_t maxCapacityStored;
+	int maxFileNumStored;
+	int ejectedFileNum; // numero di file effettivamente espulsi
+	int tryEjectFile; // numero volte che e' partito l'algoritmo di rimpiazzamento
+
+
 }fsT;
 
 
@@ -77,7 +85,7 @@ int cmpFile(void* f1, void* f2);
 
 
 
-fT* eject_file(queue* fq,char* pathname, int fdClient, int takeEmpty);
+fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty);
 
 fT* fileCopy(fT* fPtr);
 

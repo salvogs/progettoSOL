@@ -26,14 +26,21 @@ fsT* create_fileStorage(size_t maxCapacity, int maxFileNum){
 	chk_null(storage,NULL)
 
 	storage->maxCapacity = maxCapacity;
-
 	storage->maxFileNum = maxFileNum;
+
 
 	// alloco hash table
 	ec(storage->ht = icl_hash_create(storage->maxFileNum,NULL,NULL), NULL,"hash create",return NULL)
 	
 	storage->currCapacity = 0;
 	storage->currFileNum = 0;
+	
+	// stats
+	storage->maxCapacityStored = 0;
+	storage->maxFileNumStored = 0;
+	storage->ejectedFileNum = 0;
+	storage->tryEjectFile = 0;
+
 	ec(storage->filesQueue = createQueue(NULL,cmpFile),NULL,"create queue",return NULL)
 
 	ec_n(pthread_mutex_init(&(storage->smux),NULL),0,"pthread mutex init storage",return NULL)
@@ -188,7 +195,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 
 	while(size + storage->currCapacity > storage->maxCapacity){
 		
-		fT* ef = eject_file(storage->filesQueue,fPtr->pathname,fdClient,1);
+		fT* ef = eject_file(storage,fPtr->pathname,fdClient,1);
 		if(!ef){
 			UNLOCK(&(storage->smux))
 			return FILE_TOO_LARGE;
@@ -252,7 +259,11 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		if(fPtr->content){
 			memcpy(fPtr->content+fPtr->size,content,size);
 			fPtr->size += size;
-			storage->currCapacity += size;		
+			storage->currCapacity += size;
+
+			if(storage->currCapacity > storage->maxCapacityStored)
+				storage->maxCapacityStored = storage->currCapacity;
+
 		}else{
 			ret = SERVER_ERROR;
 		}
@@ -564,7 +575,7 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 	// controllo che ci sia spazio a sufficienza 		
 	if((storage->currFileNum+1) > storage->maxFileNum){
 		// non importa che il file sia vuoto o meno
-		fT* ef = eject_file(storage->filesQueue,NULL,fdClient,0);
+		fT* ef = eject_file(storage,NULL,fdClient,0);
 		chk_null(ef,STORE_FULL)
 
 		/* devo notificare eventuali client in attesa di acquisire la lock
@@ -621,6 +632,8 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 	
 
 	storage->currFileNum++;
+	if(storage->currFileNum > storage->maxFileNumStored)
+		storage->maxFileNumStored = storage->currFileNum;
 
 	return 0;
 }
@@ -765,8 +778,12 @@ fT* fileCopy(fT* fPtr){
 
 
 
-fT* eject_file(queue* fq,char* pathname, int fdClient, int chkEmpty){
+fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 	
+	storage->tryEjectFile++;
+
+	queue* fq = storage->filesQueue;
+
 	if(isQueueEmpty(fq))
 		return NULL;
 
@@ -791,13 +808,14 @@ fT* eject_file(queue* fq,char* pathname, int fdClient, int chkEmpty){
 		// chkEmpty == 1 ritorno il file solo se non e' vuoto
 
 		if((tmp->fdlock == fdClient || !(tmp->fdlock)) && (pathname ? (strcmp(tmp->pathname,pathname) != 0) : 1) && (chkEmpty ? tmp->size : 1)){
+			storage->ejectedFileNum++;
 			return tmp;
 		}		
 		curr = curr->next;
 	}
 
 	
-	return NULL; // NULL : attualmente non ho file da espellere
+	return NULL; // attualmente non ho file da espellere
 
 		
 }
