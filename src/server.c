@@ -16,7 +16,7 @@
 #include "../include/server.h"
 #include "../include/queue.h"
 #include "../include/comPrt.h"
-
+#include "../include/serverLogger.h"
 
 
 #define BUFSIZE 2048
@@ -33,6 +33,11 @@ queue* requestQueue;
 
 // pipe che servirà ai thread worker per comunicare al master i fd_client da riascoltare
 int pfd[2];
+
+// buffer condiviso fra i vari thread per logging
+char* logBuf = NULL;
+size_t logBufSize = 0;
+
 
 char* sockname;
 int workerNum;
@@ -113,17 +118,30 @@ int main(int argc, char* argv[]){
 		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath);
 
 
-	ec(requestQueue = createQueue(NULL,NULL),NULL,"creazione coda",return 1);
+	ec(requestQueue = createQueue(NULL,NULL),NULL,"requestQueue create",return 1);
 	
-	ec(pipe(pfd),-1,"creazione pipe",return 1)
+	ec(pipe(pfd),-1,"pipe create",return 1)
 	
 
 
+	// spawn thread logger
+	(void) unlink(logPath);
+	pthread_t tidLogger;
+	loggerT* loggerArgs = malloc(sizeof(loggerT));
+	chk_null(loggerArgs,1);
+	loggerArgs->path = logPath;
+	logBuf = calloc(1,LOGBUFFERSIZE);
+	loggerArgs->buffer = logBuf; 
+	loggerArgs->bufSize = &logBufSize;
+	chk_null(loggerArgs,1);
+	CREA_THREAD(&tidLogger,NULL,loggerFun,loggerArgs)
 
-	// devo spawnare i thread worker sempre in attesa di servire client
+
+
+	// spawn thread worker sempre in attesa di servire client
 	
-	pthread_t *tid; //array dove mantenere tid dei worker
-	tid = spawnThread(workerNum);
+	pthread_t* tid; //array dove mantenere tid dei worker
+	tid = spawnWorker(workerNum);
 	
 	/*
 		accetto richieste da parte dei client
@@ -240,6 +258,7 @@ int masterFun(){
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
 					fprintf(stdout,"client connesso %d\n",fd_client);
+					logEvent(logBuf,&logBufSize);
 					LOCK(&(clientMux))
 					clientNum++;
 					UNLOCK(&(clientMux))
@@ -559,7 +578,7 @@ int clientExit(int fd){
 
 
 
-pthread_t* spawnThread(int n){
+pthread_t* spawnWorker(int n){
 	pthread_t* tid = malloc(sizeof(pthread_t)*n);
 	ec(tid,NULL,"malloc",return NULL)
 

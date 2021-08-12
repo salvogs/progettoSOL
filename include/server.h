@@ -5,7 +5,7 @@
 
 int clientExit(int fd);
 
-pthread_t* spawnThread(int n);
+pthread_t* spawnWorker(int n);
 
 int masterFun();
 
