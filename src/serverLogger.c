@@ -8,46 +8,111 @@
 pthread_mutex_t lmux = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lcond = PTHREAD_COND_INITIALIZER;
 
+// buffer condiviso fra i vari thread per logging
+char* logBuf = NULL;
+size_t logBufSize = 0;
+FILE* logFile = NULL;
 
-void* loggerFun(void* args){
+int logCreate(char* logPath){
+	
+	logBuf = calloc(1,LOGBUFFERSIZE);
+	chk_null(logBuf,-1)
 
-	LOCK(&lmux)
+	logBufSize = 0;
+	(void) unlink(logPath);
 
-	loggerT* logArgs = (loggerT*)args;
+	logFile = fopen(logPath,"w");
+	chk_null(logFile,-1)
+	
+
+	return 0;
+}
+
+
+void* loggerFun(void* args){	
 
 	while(1){
-
-		FILE* fPtr = fopen(logArgs->path,"a");
-		chk_null(fPtr,NULL)
-
+		LOCK(&lmux)
 		
-
-		while(*(logArgs->bufSize) == 0)
+		while(logBufSize == 0)
 			WAIT(&lcond,&lmux)
+		// "messaggio" terminazione thread logger
+		if(logBufSize == -1){
+			UNLOCK(&lmux)
+			return NULL;
+		}
+		ec(fwrite(logBuf,logBufSize,1,logFile),logBufSize,"log fwrite",exit(EXIT_FAILURE))
 
-		//fwrite(logArgs->buffer,*(logArgs->bufSize),1,fPtr);
-		fprintf(fPtr,"%s",logArgs->buffer);
-		fclose(fPtr);
+		//fflush(logFile);
+		logBufSize = 0;
+		memset(logBuf,'\0',LOGBUFFERSIZE);
 		UNLOCK(&lmux)
 	}
 }
 
 
-int logEvent(char* logBuf,size_t* logBufSize){
+int logPrint(char* event, char* pathname, int fdClient, size_t bytes, char* ret){
 	time_t t = time(NULL);
 	
+	char buf[LOGEVENTSIZE] = "";
 
-    printf("%s\n",ctime(&t));
-	LOCK(&lmux)
+	char strTime[20] = "";
+	struct tm ltime;
+	ec(localtime_r(&t,&ltime),NULL,"localtime_r",exit(EXIT_FAILURE));
+	strftime(strTime,sizeof(strTime),"%F %T",&ltime);
 	
-	// while(logBuf == )
-	// 	WAIT(&lcond,&lmux)
+	
+	sprintf(buf+strlen(buf),"%s\ttid:%ld\t",strTime,pthread_self());
 
-	snprintf(logBuf+strlen(logBuf),strlen(ctime(&t)),"%s",ctime(&t));
-	*logBufSize += strlen(ctime(&t));
+	
+	if(fdClient){
+		sprintf(buf+strlen(buf),"client:%d\t",fdClient);
+	}
+
+	sprintf(buf+strlen(buf),"%s\t",event);
+
+
+	if(pathname && ret){
+		sprintf(buf+strlen(buf),"%s\t%s\t",pathname,ret);
+	}
+	if(bytes){
+		sprintf(buf+strlen(buf),"byte_processati:%ld\t",bytes);
+	}
+	
+
+	buf[strlen(buf)] = '\n';
+
+	LOCK(&lmux)
+
+	
+	strncat(logBuf,buf,strlen(buf));
+	logBufSize += strlen(buf);
+
+
 	SIGNAL(&(lcond));
 	UNLOCK(&lmux)
 
 
+	return 0;
+}
+
+
+int logDestroy(){
+	LOCK(&(lmux))
+
+	//controllo se c'e' ancora qualcosa da scrivere su disco 
+	if(logBufSize)
+		ec(fwrite(logBuf,logBufSize,1,logFile),logBufSize,"log fwrite",exit(EXIT_FAILURE))
+
+
+	free(logBuf);
+	fclose(logFile);
+
+	// "messaggio" terminazione
+	logBufSize = -1;
+	SIGNAL(&(lcond))
+
+
+	UNLOCK(&(lmux))
 	return 0;
 }

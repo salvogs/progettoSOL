@@ -34,10 +34,6 @@ queue* requestQueue;
 // pipe che servirà ai thread worker per comunicare al master i fd_client da riascoltare
 int pfd[2];
 
-// buffer condiviso fra i vari thread per logging
-char* logBuf = NULL;
-size_t logBufSize = 0;
-
 
 char* sockname;
 int workerNum;
@@ -71,6 +67,44 @@ void signalHandler(int signum){
 	return;
 }
 
+char* retToString(int ret){
+	char* toRet = NULL;
+	switch(ret){
+			case SUCCESS:
+				toRet =  "SUCCESS";
+			break;
+			case EMPTY_FILE:
+				toRet =  "EMPTY_FILE";
+			break;
+			case FILE_EXISTS:
+				toRet =  "FILE_EXISTS";
+			break;
+			case FILE_NOT_EXISTS:
+				toRet =  "FILE_NOT_EXISTS";
+			break;
+			case SERVER_ERROR:
+				toRet =  "SERVER_ERROR";
+			break;
+			case BAD_REQUEST:
+				toRet =  "BAD_REQUEST";
+			break;
+			case FILE_TOO_LARGE:
+				toRet =  "FILE_TOO_LARGE";
+			break;
+			case LOCKED:
+				toRet =  "LOCKED";
+			break;
+			case NOT_LOCKED:
+				toRet =  "NOT_LOCKED";
+			break;
+			case NOT_OPENED:
+				toRet =  "NOT_OPENED";
+			break;
+			default:;break;
+		}
+	
+	return toRet; 
+}
 
 int main(int argc, char* argv[]){
 	//con l'avvio del server deve essere specificato il path del file di config
@@ -78,6 +112,7 @@ int main(int argc, char* argv[]){
 		fprintf(stderr,"usage:%s configpath\n",argv[0]);
 		return 1;
 	}
+	
 	
 
 	//installo i nuovi signal handler per SIGINT, SIGQUIT, SIGHUP 
@@ -123,20 +158,12 @@ int main(int argc, char* argv[]){
 	ec(pipe(pfd),-1,"pipe create",return 1)
 	
 
-
-	// spawn thread logger
-	(void) unlink(logPath);
 	pthread_t tidLogger;
-	loggerT* loggerArgs = malloc(sizeof(loggerT));
-	chk_null(loggerArgs,1);
-	loggerArgs->path = logPath;
-	logBuf = calloc(1,LOGBUFFERSIZE);
-	loggerArgs->buffer = logBuf; 
-	loggerArgs->bufSize = &logBufSize;
-	chk_null(loggerArgs,1);
-	CREA_THREAD(&tidLogger,NULL,loggerFun,loggerArgs)
+	chk_neg1(logCreate(logPath),SERVER_ERROR);
 
+	CREA_THREAD(&tidLogger,NULL,loggerFun,(void*)logPath)
 
+	logPrint("==AVVIO SERVER==",NULL,0,0,NULL);
 
 	// spawn thread worker sempre in attesa di servire client
 	
@@ -151,6 +178,7 @@ int main(int argc, char* argv[]){
 	chk_neg1(masterFun(),EXIT_FAILURE);
 
 
+	logPrint("==ARRESTO SERVER==",NULL,0,0,NULL);
 	/* mando messaggio di terminazione (NULL) ai workers
 	(tanti quanti sono i workers) */
 
@@ -160,10 +188,16 @@ int main(int argc, char* argv[]){
 		SIGNAL(&cond);
 		UNLOCK(&request_mux);
 	}
-
+	// join workers
 	for(int i = 0; i < workerNum; i++){
 		pthread_join(tid[i],NULL);
+		// logPrint("JOIN THREAD",NULL,tid[i],0,NULL);
 	}
+
+	logDestroy();
+	
+	// join thread logger
+	pthread_join(tidLogger,NULL);
 	
 	destroyQueue(requestQueue,0);
 	close(pfd[0]);
@@ -178,7 +212,6 @@ int main(int argc, char* argv[]){
 
 	destroy_fileStorage(storage);
 	
-	puts("terminooo");
 
 	return 0;
 }
@@ -257,8 +290,8 @@ int masterFun(){
 				//se è proprio fd_sdk faccio la accept che NON SI BLOCCHERÀ
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
-					fprintf(stdout,"client connesso %d\n",fd_client);
-					logEvent(logBuf,&logBufSize);
+					//fprintf(stdout,"client connesso %d\n",fd_client);
+					logPrint("CLIENT CONNESSO",NULL,fd_client,0,NULL);
 					LOCK(&(clientMux))
 					clientNum++;
 					UNLOCK(&(clientMux))
@@ -319,7 +352,7 @@ void* workerFun(){
 		LOCK(&request_mux);
 		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
-		fprintf(stdout,"sono il thread %ld\n", pthread_self());
+		//fprintf(stdout,"sono il thread %ld\n", pthread_self());
 		// printQueueInt(requestQueue);
 
 		void* fd_ = dequeue(requestQueue);
@@ -360,9 +393,12 @@ void* workerFun(){
 				die_on_se(getFlags(fd, &flags))
 
 				ret = open_file(storage,fd,pathname,flags,fdPending);				
+				
+				logPrint("OPEN FILE",pathname,fd,0,retToString(ret));
+
 				if(!flags || ret != SUCCESS)
 					free(pathname);
-					
+				
 			}	
 			
 			break;
@@ -374,6 +410,7 @@ void* workerFun(){
 
 				ret = close_file(storage,fd,pathname);
 				
+				logPrint("CLOSE FILE",pathname,fd,0,retToString(ret));
 				
 			}
 			break;
@@ -405,8 +442,8 @@ void* workerFun(){
 					free(ef->pathname);
 					freeFile(ef);
 				}
-					
-					
+				
+				(op == WRITE_FILE) ? logPrint("WRITE FILE",pathname,fd,size,retToString(ret)) : logPrint("APPEND TO FILE",pathname,fd,size,retToString(ret));
 				
 				
 			}
@@ -435,6 +472,7 @@ void* workerFun(){
 					// invio risposta al client (errore)
 					die_on_se(sendResponseCode(fd,ret))
 				}
+				logPrint("READ FILE",pathname,fd,size,retToString(ret));
 			}
 	
 			break;
@@ -447,7 +485,7 @@ void* workerFun(){
 					
 				
 				ret = remove_file(storage,fd,pathname,fdPending);
-				
+				logPrint("REMOVE FILE",pathname,fd,0,retToString(ret));
 			}
 			break;
 
@@ -460,18 +498,19 @@ void* workerFun(){
 
 				die_on_se(ret = read_n_file(storage,n,fd,ejected))
 				
-				
-					// mando i file 
-					while(ejected->ndata){
-						fT* ef = dequeue(ejected);	
-						if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
-							return NULL;
-						}
-						free(ef->pathname);
-						freeFile(ef);
-
+				int sizeSum = 0;
+				// mando i file 
+				while(ejected->ndata){
+					fT* ef = dequeue(ejected);	
+					if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
+						return NULL;
 					}
-				
+					sizeSum += ef->size;
+					free(ef->pathname);
+					freeFile(ef);
+
+				}
+				logPrint("READ N FILE",pathname,fd,sizeSum,retToString(ret));
 			}
 			break;
 
@@ -486,7 +525,7 @@ void* workerFun(){
 				if(ret != LOCKED)
 					die_on_se(sendResponseCode(fd,ret))
 					
-				
+				logPrint("LOCK FILE",pathname,fd,0,retToString(ret));
 				
 			}
 			break;
@@ -505,7 +544,7 @@ void* workerFun(){
 				}
 
 				
-				
+				logPrint("UNLOCK FILE",pathname,fd,0,retToString(ret));
 			}
 			break;
 
@@ -555,7 +594,8 @@ int clientExit(int fd){
 	}
 
 
-	fprintf(stdout,"client %d disconnesso\n",fd);
+	//fprintf(stdout,"client %d disconnesso\n",fd);
+	logPrint("CLIENT DISCONNESSO",NULL,fd,0,NULL);
 	LOCK(&(clientMux))
 	clientNum--;
 
@@ -584,6 +624,7 @@ pthread_t* spawnWorker(int n){
 
 	for(int i = 0; i < n; i++){
 		CREA_THREAD(&tid[i],NULL,workerFun,NULL)
+		// logPrint("SPAWN WORKER",NULL,tid[i],0,NULL);
 	}
 
 	return tid;
