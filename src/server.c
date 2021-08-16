@@ -48,6 +48,7 @@ volatile sig_atomic_t noMoreRequest = 0;
 
 
 int clientNum = 0;
+int maxClientNum = 0;
 pthread_mutex_t clientMux = PTHREAD_MUTEX_INITIALIZER;
 
 void signalHandler(int signum){
@@ -194,10 +195,7 @@ int main(int argc, char* argv[]){
 		// logPrint("JOIN THREAD",NULL,tid[i],0,NULL);
 	}
 
-	logDestroy();
 	
-	// join thread logger
-	pthread_join(tidLogger,NULL);
 	
 	destroyQueue(requestQueue,0);
 	close(pfd[0]);
@@ -207,8 +205,12 @@ int main(int argc, char* argv[]){
 	destroyConfiguration(config);
 	
 	// stampo sunto operazioni
-	printFinalInfo(storage);
+	print_final_info(storage,maxClientNum);
 
+	logDestroy();
+	
+	// join thread logger
+	pthread_join(tidLogger,NULL);
 
 	destroy_fileStorage(storage);
 	
@@ -292,8 +294,12 @@ int masterFun(){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
 					//fprintf(stdout,"client connesso %d\n",fd_client);
 					logPrint("CLIENT CONNESSO",NULL,fd_client,0,NULL);
+
 					LOCK(&(clientMux))
 					clientNum++;
+					if(clientNum > maxClientNum)
+						maxClientNum = clientNum;
+
 					UNLOCK(&(clientMux))
 					//nella mascheraa set metto a 1 il bit della fd_client(ora è attivo)
 					FD_SET(fd_client,&set);
@@ -394,7 +400,7 @@ void* workerFun(){
 
 				ret = open_file(storage,fd,pathname,flags,fdPending);				
 				
-				logPrint("OPEN FILE",pathname,fd,0,retToString(ret));
+				logPrint((IS_O_LOCK_SET(flags)) ? "OPEN-LOCK FILE" : "OPEN FILE",pathname,fd,0,retToString(ret));
 
 				if(!flags || ret != SUCCESS)
 					free(pathname);
@@ -846,27 +852,3 @@ int getFile(int fd, size_t* size, void** content){
 	
 }
 
-
-
-void printFinalInfo(fsT* storage){
-
-		
-	fprintf(stdout,"\033[0;32m---STATISTICHE FINALI---\n\033[0m");
-	
-	fprintf(stdout,"Max file memorizzati: %d\n",storage->maxFileNumStored);
-	fprintf(stdout,"Max Mbyte memorizzati: ~%.f\n",(float)(storage->maxCapacityStored/1000));
-	fprintf(stdout,"Esecuzioni dell'algoritmo di rimpiazzamento: %d\n",storage->tryEjectFile);
-	fprintf(stdout,"File espulsi: %d\n",storage->ejectedFileNum);
-
-	fprintf(stdout,"File presenti alla chiusura: %d\n",storage->currFileNum);
-	// stampo lista file (path) presenti alla chiusura
-	data* curr = storage->filesQueue->head;
-
-	while(curr){
-		fprintf(stdout,"%s\n",((fT*)(curr->data))->pathname);
-		curr = curr->next;
-	}
-
-	return;
-
-}

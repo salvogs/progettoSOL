@@ -11,8 +11,6 @@ int masterFun();
 
 void* workerFun();
 
-void printFinalInfo(fsT* storage);
-
 int getPathname(int fd,char** pathname);
 
 int sendResponseCode(int fd,int res);

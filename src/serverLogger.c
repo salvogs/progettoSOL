@@ -69,12 +69,17 @@ int logPrint(char* event, char* pathname, int fdClient, size_t bytes, char* ret)
 		sprintf(buf+strlen(buf),"client:%d\t",fdClient);
 	}
 
-	sprintf(buf+strlen(buf),"%s\t",event);
+	sprintf(buf+strlen(buf),"op:%s\t",event);
 
 
-	if(pathname && ret){
-		sprintf(buf+strlen(buf),"%s\t%s\t",pathname,ret);
+	if(pathname){
+		sprintf(buf+strlen(buf),"path:%s\t",pathname);
 	}
+
+	if(ret){
+		sprintf(buf+strlen(buf),"%s\t",ret);
+	}
+
 	if(bytes){
 		sprintf(buf+strlen(buf),"byte_processati:%ld\t",bytes);
 	}

@@ -5,6 +5,7 @@
 #include "../include/comPrt.h"
 #include "../include/icl_hash.h"
 #include "../include/queue.h"
+#include "../include/serverLogger.h"
 //struct che mantiene lo stato del file storage server
 
 typedef struct{
@@ -52,6 +53,12 @@ typedef struct{
 	queue* fdpending;
 }fT;
 
+#define IS_O_CREATE_SET(flags) \
+	(flags == 1 || flags == 3) ? 1 : 0
+	
+
+#define IS_O_LOCK_SET(flags) \
+	(flags == 2 || flags == 3) ? 1 : 0
 
 
 #define CAST_FD(fd) (void*)(long)fd
@@ -86,6 +93,8 @@ int cmpFile(void* f1, void* f2);
 
 
 fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty);
+
+void print_final_info(fsT* storage,int maxClientNum);
 
 fT* fileCopy(fT* fPtr);
 

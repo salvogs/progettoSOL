@@ -9,16 +9,6 @@
 
 
 
-#define IS_O_CREATE_SET(flags) \
-	(flags == 1 || flags == 3) ? 1 : 0
-	
-
-#define IS_O_LOCK_SET(flags) \
-	(flags == 2 || flags == 3) ? 1 : 0
-
-
-
-
 
 fsT* create_fileStorage(size_t maxCapacity, int maxFileNum){
 	
@@ -781,6 +771,8 @@ fT* fileCopy(fT* fPtr){
 fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 	
 	storage->tryEjectFile++;
+	logPrint("==ALGORIMO RIMPIAZZAMENTO==",NULL,0,0,NULL);
+
 
 	queue* fq = storage->filesQueue;
 
@@ -809,6 +801,7 @@ fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 
 		if((tmp->fdlock == fdClient || !(tmp->fdlock)) && (pathname ? (strcmp(tmp->pathname,pathname) != 0) : 1) && (chkEmpty ? tmp->size : 1)){
 			storage->ejectedFileNum++;
+			logPrint("ESPULSO",tmp->pathname,0,0,NULL);
 			return tmp;
 		}		
 		curr = curr->next;
@@ -819,6 +812,42 @@ fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 
 		
 }
+
+
+void print_final_info(fsT* storage,int maxClientNum){
+
+	fprintf(stdout,"\033[0;32m---STATISTICHE FINALI---\n\033[0m");
+	
+	fprintf(stdout,"Max file memorizzati: %d\n",storage->maxFileNumStored);
+
+	fprintf(stdout,"Max Mbyte memorizzati: %.f\n",(float)(storage->maxCapacityStored/1024));
+	fprintf(stdout,"Esecuzioni dell'algoritmo di rimpiazzamento: %d\n",storage->tryEjectFile);
+	fprintf(stdout,"File espulsi: %d\n",storage->ejectedFileNum);
+
+	fprintf(stdout,"File presenti alla chiusura: %d\n",storage->currFileNum);
+
+	char buf[LOGEVENTSIZE] = "";
+	snprintf(buf,LOGEVENTSIZE,"==STATS==MAXNFILE %d MAXMBYTE %.f MAXCLIENT %d",storage->maxFileNumStored,(float)(storage->maxCapacityStored/1024),maxClientNum);
+	logPrint(buf,NULL,0,0,NULL);
+
+	// stampo lista file (path) presenti alla chiusura
+	data* curr = storage->filesQueue->head;
+
+	while(curr){
+		fprintf(stdout,"%s\n",((fT*)(curr->data))->pathname);
+		curr = curr->next;
+	}
+
+	return;
+
+}
+
+
+
+
+
+
+
 
 
 void freeFile(void* fptr){
