@@ -92,23 +92,25 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 			}else if(file->d_type == DT_REG){
                 if(openFile(absoluteName,O_CREATE | O_LOCK) == 0){ //file creato sul server
 					//adesso bisogna inviare al server il contenuto del file
-					if(writeFile(absoluteName,dirname) == 0){
-						if(limited)
-							(*n)--;
-						if(closeFile(absoluteName) != 0){
-							if(errno && errno != ECONNRESET && errno != EPIPE){
-								perror("closeFile");
-								return -1;
-							}
-						}	
-					}else if(errno && errno != ECONNRESET && errno != EPIPE){
-						closedir(d);
-						perror("writeFile");
-						return -1;
+					if(writeFile(absoluteName,dirname) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
+							closedir(d);
+							perror("writeFile");
+							return -1;
+						}
+					}	
+					if(limited)	(*n)--;
+						
+	
+					if(closeFile(absoluteName) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
+							perror("closeFile");
+							return -1;
+						}
 					}	
 					
 				}else{
-					if(errno && errno != ECONNRESET && errno != EPIPE){
+					if(errno && errno != EADDRINUSE && errno != ECONNRESET && errno != EPIPE){
 						closedir(d);
 						perror("openFile");
 						return -1;
@@ -116,28 +118,30 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 					void* content = NULL;
 					size_t size = 0;
 					// provo ad aprire il file senza flag e a fare la append
-					if(openFile(absoluteName,0) == 0){
-						ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return -1)
+					if(openFile(absoluteName,0) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
+							perror("openFile");
+							free(pathname);
+							return -1;
+						}
+					}
+					ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return -1)
 
-						if(appendToFile(absoluteName,content,size,dirname) == 0){
-							if(limited)
-								(*n)--;
-							if(closeFile(absoluteName) != 0){
-								if(errno && errno != ECONNRESET && errno != EPIPE){
-									perror("closeFile");
-									return -1;
-								}
-							}
-						}else if(errno && errno != ECONNRESET && errno != EPIPE){
+					if(appendToFile(absoluteName,content,size,dirname) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
 							perror("appendToFile");
 							free(content);
 							free(pathname);
 							return -1;
 						} 
-					}else if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("openFile");
-						free(pathname);
-						return -1;
+					}
+						if(limited) (*n)--;
+						
+					if(closeFile(absoluteName) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
+							perror("closeFile");
+							return -1;
+						}
 					}
 					free(content);
 				} 
@@ -151,7 +155,7 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 }
     
 int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
-
+	
 	char* save;
 	char* path;
 
@@ -222,55 +226,59 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 			}
 
 			if(openFile(pathname,O_CREATE | O_LOCK) == 0){
-					//adesso bisogna inviare al server il contenuto del file
-					if(writeFile(pathname,dirname) == 0){
-
-						if(closeFile(pathname) != 0){
-							if(errno && errno != ECONNRESET && errno != EPIPE){
-								perror("closeFile");
-								return -1;
-							}
-						}
-					}else if(errno && errno != ECONNRESET && errno != EPIPE){
+				//adesso bisogna inviare al server il contenuto del file
+				if(writeFile(pathname,dirname) != 0){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
 						perror("writeFile");
 						free(pathname);
 						return -1;
 					} 
+				}	
+				if(closeFile(pathname) != 0){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
+						perror("closeFile");
+						return -1;
+					}
+				}
 					
 			}else{
-				if(errno && errno != ECONNRESET && errno != EPIPE){
+				if(errno && errno != EADDRINUSE && errno != ECONNRESET && errno != EPIPE){
 					perror("openFile");
 					free(pathname);
 					return -1;
 				}
 
 				// provo ad aprire il file senza flag e a fare la append
-				if(openFile(pathname,0) == 0){
-					void* content = NULL;
-					ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return -1)
-
-					if(appendToFile(pathname,content,size,dirname) == 0){
-						
-						if(closeFile(pathname) != 0){
-							if(errno && errno != ECONNRESET && errno != EPIPE){
-								perror("closeFile");
-								return -1;
-							}
-						}
-					}else if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("appendToFile");
-						if(content) free(content);
+				if(openFile(pathname,0) != 0){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
+						perror("openFile");
 						free(pathname);
 						return -1;
-					} 
-					if(content) free(content);
+					}
+				}
 
-					
-				}if(errno && errno != ECONNRESET && errno != EPIPE){
-					perror("openFile");
+
+				void* content = NULL;
+				ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return -1)
+
+				if(appendToFile(pathname,content,size,dirname) != 0){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
+						perror("appendToFile");
+					if(content) free(content);
 					free(pathname);
 					return -1;
+					} 
 				}
+				if(content) free(content);
+
+				if(closeFile(pathname) != 0){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
+						perror("closeFile");
+						return -1;
+					}	
+				}
+					
+				
 			} 
 			
 			free(pathname);
@@ -310,16 +318,16 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 						}
 						if(buf)	free(buf);
 
-						if(closeFile(path) != 0){
-							if(errno && errno != ECONNRESET && errno != EPIPE){
-								perror("closeFile");
-								return -1;
-							}
-						}
 					}else if(errno && errno != ECONNRESET && errno != EPIPE){
 							perror("readFile");
 							return -1;
 					} 
+					if(closeFile(path) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
+							perror("closeFile");
+							return -1;
+						}
+					}
 					
 			}else if(errno && errno != ECONNRESET && errno != EPIPE){
 				perror("openFile");
