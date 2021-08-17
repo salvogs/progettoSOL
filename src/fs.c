@@ -51,7 +51,6 @@ int destroy_fileStorage(fsT* storage){
 
 int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPending){
 
-
 	short int create = IS_O_CREATE_SET(flags), lock = IS_O_LOCK_SET(flags);
 
 	// lock dello storage

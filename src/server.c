@@ -52,7 +52,6 @@ int maxClientNum = 0;
 pthread_mutex_t clientMux = PTHREAD_MUTEX_INITIALIZER;
 
 void signalHandler(int signum){
-	printf("ricevuto %d\n",signum);
 	switch(signum){
 		case SIGINT:
 		case SIGQUIT:
@@ -65,6 +64,10 @@ void signalHandler(int signum){
 		default: 
 			_exit(EXIT_FAILURE);
 	}
+	int warnSig = -1;
+	// nel caso in cui arrivi un segnale tra while e select 
+	write(pfd[1],&warnSig,sizeof(int));
+
 	return;
 }
 
@@ -149,8 +152,8 @@ int main(int argc, char* argv[]){
 		return 1;
 	
 
-	printf("MAXCAPACITY: %ld, MAXFILENUM: %d "
-		 "WORKERNUM: %d SOCKNAME: %s LOGPATH: %s\n"\
+	printf("\033[0;32mMAXCAPACITY:\033[0m %ld, \033[0;32mMAXFILENUM:\033[0m %d, "
+		 "\033[0;32mWORKERNUM:\033[0m %d, \033[0;32mSOCKNAME:\033[0m %s, \033[0;32mLOGPATH:\033[0m %s\n"\
 		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath);
 
 
@@ -269,7 +272,6 @@ int masterFun(){
 			
 			// SIGHUP (non accetto piu'nuove connessioni)
 			if(noMoreClient){
-				puts("no more client");
 				FD_CLR(fd_skt,&set);
 
 				//se era il max fd allora decremento il max
@@ -314,6 +316,9 @@ int masterFun(){
 					
 					if(fd_client == 0) // ultimo client disconnesso
 						return 0;
+					if(fd_client == -1){
+						continue;
+					}
 						// break; 
 					
 					FD_SET(fd_client,&set);
@@ -391,14 +396,14 @@ void* workerFun(){
 		switch(op){
 			case OPEN_FILE:{
 				// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 
 				int flags = 0;
 
 				//leggo i flags
-				die_on_se(getFlags(fd, &flags))
+				chk_get_send(getFlags(fd, &flags))
 
-				ret = open_file(storage,fd,pathname,flags,fdPending);				
+				die_on_se(ret = open_file(storage,fd,pathname,flags,fdPending))
 				
 				logPrint((IS_O_LOCK_SET(flags)) ? "OPEN-LOCK FILE" : "OPEN FILE",pathname,fd,0,retToString(ret));
 
@@ -412,9 +417,9 @@ void* workerFun(){
 			case CLOSE_FILE:{
 
 				// leggo il pathname del file da chiudere
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 
-				ret = close_file(storage,fd,pathname);
+				die_on_se(ret = close_file(storage,fd,pathname))
 				
 				logPrint("CLOSE FILE",pathname,fd,0,retToString(ret));
 				
@@ -425,17 +430,17 @@ void* workerFun(){
 			case APPEND_TO_FILE:
 			{
 				// leggo il pathname del file da scrivere
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 					
 				size_t size = 0;
 				void* content = NULL;
 
 				// leggo contentuto file
-				die_on_se(getFile(fd,&size,&content))
+				chk_get_send(getFile(fd,&size,&content))
 			
+	
 
-
-				ret = write_append_file(storage,fd,pathname,size,content,ejected,fdPending); 
+				die_on_se(ret = write_append_file(storage,fd,pathname,size,content,ejected,fdPending))
 			
 				free(content);
 
@@ -443,7 +448,7 @@ void* workerFun(){
 				// mando i file espulsi
 				while(ejected->ndata){
 					fT* ef = dequeue(ejected);	
-					die_on_se(sendFile(fd,ef->pathname,ef->size,ef->content))
+					chk_get_send(sendFile(fd,ef->pathname,ef->size,ef->content))
 
 					free(ef->pathname);
 					freeFile(ef);
@@ -457,26 +462,24 @@ void* workerFun(){
 
 			case READ_FILE:{
 				// leggo il pathname del file da leggere
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 					
 
 				size_t size = 0;
 				void* content = NULL;
 
-				ret = read_file(storage,fd,pathname,&size,&content); 
+				die_on_se(ret = read_file(storage,fd,pathname,&size,&content))
 				
 				if(ret == SUCCESS){
 
 					// mando SENDING_FILE + size + file
 
-					if(sendFile(fd,NULL,size,content) != 0){
-						return NULL;
-					}
+					chk_get_send(sendFile(fd,NULL,size,content))
 
 					free(content);
 				}else{
 					// invio risposta al client (errore)
-					die_on_se(sendResponseCode(fd,ret))
+					chk_get_send(sendResponseCode(fd,ret))
 				}
 				logPrint("READ FILE",pathname,fd,size,retToString(ret));
 			}
@@ -487,10 +490,10 @@ void* workerFun(){
 			case REMOVE_FILE:{
 				
 				// leggo il pathname del file da rimuovere
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 					
 				
-				ret = remove_file(storage,fd,pathname,fdPending);
+				die_on_se(ret = remove_file(storage,fd,pathname,fdPending))
 				logPrint("REMOVE FILE",pathname,fd,0,retToString(ret));
 			}
 			break;
@@ -499,7 +502,7 @@ void* workerFun(){
 			case READ_N_FILE:{
 
 				int n = 0;
-				die_on_se(getN(fd,&n))
+				chk_get_send(getN(fd,&n))
 				
 
 				die_on_se(ret = read_n_file(storage,n,fd,ejected))
@@ -508,9 +511,8 @@ void* workerFun(){
 				// mando i file 
 				while(ejected->ndata){
 					fT* ef = dequeue(ejected);	
-					if(sendFile(fd,ef->pathname,ef->size,ef->content) != 0){
-						return NULL;
-					}
+					chk_get_send(sendFile(fd,ef->pathname,ef->size,ef->content))
+
 					sizeSum += ef->size;
 					free(ef->pathname);
 					freeFile(ef);
@@ -522,14 +524,14 @@ void* workerFun(){
 
 			case LOCK_FILE:{
 				// leggo il pathname del file da rimuovere
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 
 
-				ret = lock_file(storage,fd,pathname); 
+				die_on_se(ret = lock_file(storage,fd,pathname))
 				// se ret == LOCKED lascio il client in attesa
 
 				if(ret != LOCKED)
-					die_on_se(sendResponseCode(fd,ret))
+					chk_get_send(sendResponseCode(fd,ret))
 					
 				logPrint("LOCK FILE",pathname,fd,0,retToString(ret));
 				
@@ -538,7 +540,7 @@ void* workerFun(){
 
 			case UNLOCK_FILE:{
 				// leggo il pathname del file da rimuovere
-				die_on_se(getPathname(fd,&pathname))
+				chk_get_send(getPathname(fd,&pathname))
 				
 				int newFdLock = 0;
 
@@ -546,7 +548,7 @@ void* workerFun(){
 				
 				// notifico eventuale client in attesa che adesso ha la lock sul file
 				if(newFdLock){
-					die_on_se(sendResponseCode(newFdLock,SUCCESS))
+					chk_get_send(sendResponseCode(newFdLock,SUCCESS))
 				}
 
 				
@@ -556,7 +558,7 @@ void* workerFun(){
 
 			default:{
 				// invio risposta al client
-				die_on_se(sendResponseCode(fd,BAD_REQUEST))
+				chk_get_send(sendResponseCode(fd,BAD_REQUEST))
 			}
 		}
 
@@ -568,12 +570,12 @@ void* workerFun(){
 
 		if(op != READ_FILE && op != LOCK_FILE){
 			// invio risposta al client
-			die_on_se(sendResponseCode(fd,ret))
+			chk_get_send(sendResponseCode(fd,ret))
 		}
 
 		// notifico i client che erano in attesa di acquisire lock
 		while(fdPending->ndata){
-			die_on_se(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
+			chk_get_send(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
 		}
 
 		// scrivo fd sulla pipe in comune col dispatcher
@@ -596,7 +598,7 @@ int clientExit(int fd){
 
 	// notifico il client che erano in attesa di acquisire lock
 	while(fdPending->ndata){
-		die_on_se(sendResponseCode((long)dequeue(fdPending),FILE_NOT_EXISTS))
+		chk_get_send(sendResponseCode((long)dequeue(fdPending),SUCCESS))
 	}
 
 
@@ -646,7 +648,7 @@ int getPathname(int fd,char** pathname){
 	chk_null(_pathLen,SERVER_ERROR)
 	
 	int ret = 0;
-
+	
 	ret = readn(fd,_pathLen,PATHNAME_LEN);
 	if(ret == 0){
 		clientExit(fd);
@@ -786,10 +788,10 @@ int getFlags(int fd, int *flags){
 	int flags_ = 0;
 	int ret = readn(fd,&flags_,FLAG_SIZE);
 	if(ret == -1){
-		return -1;
+		return SERVER_ERROR;
 	}
 	if(ret == 0){
-		errno = ECONNRESET;
+		clientExit(fd);
 		return -1;
 	}
 	*flags = flags_ - '0';
@@ -831,9 +833,7 @@ int getFile(int fd, size_t* size, void** content){
 
 		//leggo contenuto file
 		ret = readn(fd,content_,size_);
-
 		if(ret == 0){
-			errno = ECONNRESET;
 			free(content_);
 			return -1;
 		}

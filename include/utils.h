@@ -73,7 +73,20 @@ char *strndup(const char *s, size_t n);
     if((s) == SERVER_ERROR) \
     {               \
         exit(EXIT_FAILURE);   \
-    }       
+    }
+
+// chk read e write verso i client
+#define chk_get_send(s) if(1){\
+    int r = s;\
+    if(r == SERVER_ERROR) \
+    {               \
+        exit(EXIT_FAILURE);   \
+    }\
+    if(r == -1) \
+    {               \
+        continue;   \
+    }       \
+}
 
 
 

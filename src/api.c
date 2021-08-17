@@ -31,7 +31,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 				return -1;
 			}
 		
-			PRINT(fprintf(stdout,"PID:%d Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",getpid(),msec))
+			PRINT(fprintf(stdout,"==%d== Impossibile stabilire una connessione con il socket. Riprovo tra %d msec\n",getpid(),msec))
 			
 		}else{
 			return -1;
@@ -41,7 +41,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 	}
 
 	
-	PRINT(fprintf(stdout,"PID:%d Connessione con il socket stabilita.\n",getpid()))
+	PRINT(fprintf(stdout,"==%d== Connessione con il socket stabilita.\n",getpid()))
 	
 	
 	return 0;
@@ -58,7 +58,7 @@ int closeConnection(const char* sockname){
 
 	chk_neg1(close(FD_CLIENT),-1)
 
-	PRINT(fprintf(stdout,"PID:%d Connessione chiusa.\n",getpid()))
+	PRINT(fprintf(stdout,"==%d== Connessione chiusa.\n",getpid()))
 		
 	return 0;
 }
@@ -364,7 +364,7 @@ int readNFiles(int N, const char* dirname){
 	
 	
 	if(response == SUCCESS){
-		PRINT(fprintf(stdout,"PID:%d Letti: %d files e %ld bytes\n",getpid(),readCounter,bytes))
+		PRINT(fprintf(stdout,"==%d== Letti: %d files e %ld bytes\n",getpid(),readCounter,bytes))
 		return readCounter;
 	}else{
 		return -1;
@@ -522,7 +522,7 @@ int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCo
 		if(getFile(&size,&content,&pathname) != 0)
 			return -1;
 	}
-	PRINT(fprintf(stdout,"PID:%d RICEVUTO : %s : %ld bytes\n",getpid(),pathname,size))
+	PRINT(fprintf(stdout,"==%d== RICEVUTO : %s : %ld bytes\n",getpid(),pathname,size))
 
 	if(dirname){
 		if(writeFileOnDisk(dirname,pathname,content,size) != 0){
