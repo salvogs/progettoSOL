@@ -133,6 +133,9 @@ int main(int argc, char* argv[]){
 	ec(sigaction(SIGQUIT,&sact,NULL),-1,"sigaction",return 1)
 	ec(sigaction(SIGHUP,&sact,NULL),-1,"sigaction",return 1)
 
+	// ignoro SIGPIPE
+	sact.sa_handler = SIG_IGN;
+	ec(sigaction(SIGPIPE,&sact,NULL),-1,"sigaction",return 1)
 
 	//tolgo la maschera
 	ec(sigemptyset(&set),-1,"sigemptyset",return 1)
@@ -411,7 +414,7 @@ void* workerFun(){
 					free(pathname);
 				
 			}	
-			
+	
 			break;
 			
 			case CLOSE_FILE:{

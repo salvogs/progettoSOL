@@ -819,14 +819,14 @@ void print_final_info(fsT* storage,int maxClientNum){
 	
 	fprintf(stdout,"Max file memorizzati: %d\n",storage->maxFileNumStored);
 
-	fprintf(stdout,"Max Mbyte memorizzati: %.f\n",(float)(storage->maxCapacityStored/1024));
+	fprintf(stdout,"Max Mbyte memorizzati: %.2f\n",(float)(storage->maxCapacityStored)/1000000);
 	fprintf(stdout,"Esecuzioni dell'algoritmo di rimpiazzamento: %d\n",storage->tryEjectFile);
 	fprintf(stdout,"File espulsi: %d\n",storage->ejectedFileNum);
 
 	fprintf(stdout,"File presenti alla chiusura: %d\n",storage->currFileNum);
 
 	char buf[LOGEVENTSIZE] = "";
-	snprintf(buf,LOGEVENTSIZE,"==STATS==MAXNFILE %d MAXMBYTE %.f MAXCLIENT %d",storage->maxFileNumStored,(float)(storage->maxCapacityStored/1024),maxClientNum);
+	snprintf(buf,LOGEVENTSIZE,"==STATS==MAXNFILE %d MAXMBYTE %.2f MAXCLIENT %d",storage->maxFileNumStored,(float)(storage->maxCapacityStored)/1000000,maxClientNum);
 	logPrint(buf,NULL,0,0,NULL);
 
 	// stampo lista file (path) presenti alla chiusura

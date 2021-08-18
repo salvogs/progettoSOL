@@ -97,7 +97,8 @@ int openFile(const char* pathname, int flags){
 	
 
 	if(response != SUCCESS){
-		if(response == FILE_EXISTS) errno = EADDRINUSE;
+		if(response == FILE_EXISTS)
+			errno = EADDRINUSE;
 		return -1;
 	}
 	errno = 0;

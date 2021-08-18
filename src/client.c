@@ -115,6 +115,7 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 						perror("openFile");
 						return -1;
 					}
+					errno = 0;
 					void* content = NULL;
 					size_t size = 0;
 					// provo ad aprire il file senza flag e a fare la append
@@ -212,7 +213,6 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		path = strtok_r(args,",",&save);
 
 		while(path){
-			errno = 0;
 			pathname = realpath(path,NULL);
 			if(!pathname){
 				perror("realpath");
@@ -247,7 +247,7 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 					free(pathname);
 					return -1;
 				}
-
+				errno = 0;
 				// provo ad aprire il file senza flag e a fare la append
 				if(openFile(pathname,0) != 0){
 					if(errno && errno != ECONNRESET && errno != EPIPE){
@@ -298,7 +298,7 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 	char* save;
-
+	
 	if(opt == 'r'){
 		
 		char* path;
@@ -308,26 +308,28 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 			// openFile senza flags
 			if(openFile(path,0) == 0){ //file creato sul server
 					//adesso bisogna leggere dal server il file
-					void* buf;
-					size_t size;
-					if(readFile(path,&buf,&size) == 0){
-						if(dirname){
-							if(writeFileOnDisk(dirname,path,buf,size) != 0){
-								return -1;
-							}
-						}
-						if(buf)	free(buf);
-
-					}else if(errno && errno != ECONNRESET && errno != EPIPE){
+					void* buf = NULL;
+					size_t size = 0;
+					if(readFile(path,&buf,&size) != 0){
+						if(errno && errno != ECONNRESET && errno != EPIPE){
 							perror("readFile");
 							return -1;
-					} 
-					if(closeFile(path) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							perror("closeFile");
+						} 
+					}
+					if(dirname){
+						if(writeFileOnDisk(dirname,path,buf,size) != 0){
 							return -1;
 						}
 					}
+					if(buf)	free(buf);
+
+
+				if(closeFile(path) != 0){
+					if(errno && errno != ECONNRESET && errno != EPIPE){
+						perror("closeFile");
+						return -1;
+					}
+				}
 					
 			}else if(errno && errno != ECONNRESET && errno != EPIPE){
 				perror("openFile");
@@ -446,10 +448,7 @@ int main(int argc, char* argv[]){
 
 
 	if(openConnection(parseResult->SOCKNAME,OC_RETRY_TIME,abstime) == -1){
-		if(errno == ENOENT)
-			fprintf(stderr,"open connection: Socket non trovato\n");
-		else
-			perror("open connection");
+		perror("open connection");
 
 		destroyClientParsing(parseResult);
 		return 1;
