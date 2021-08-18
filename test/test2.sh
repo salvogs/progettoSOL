@@ -8,7 +8,7 @@ NC='\033[0m' # No Color
 # avvio server in background
 echo -e "${LGREEN}==AVVIO SERVER IN BACKGROUND==${NC}"
 
-valgrind --leak-check=full ./bin/server test/config2.txt &
+./bin/server test/config2.txt &
 
 SPID=$!
 

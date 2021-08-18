@@ -1,0 +1,14 @@
+# capacità massima in bytes del server
+MAXCAPACITY: 1000000
+
+# numero di file massimo del server
+MAXFILENUM:10
+
+# numero di thread worker
+WORKERNUM:4
+
+# path del socket
+SOCKETPATH:socket.sk
+
+# path del log file
+LOGPATH:log.txt
