@@ -19,7 +19,7 @@ socket=socket.sk
 reqTime=200
 
 
-./bin/client -p -f $socket -t $reqTime -w src -w include,n=3 -r "$PWD/src/server.c","$PWD/src/client.c" -d readDir 
+./bin/client -p -f $socket -t $reqTime -w src -w include,n=3 -r "$PWD/src/server.c","$PWD/src/client.c" -d test/readDir 
 echo -e "${LBLUE}==CLIENT 1 DISCONNESSO==${NC}"
 
 
@@ -30,7 +30,7 @@ echo -e "${LBLUE}==CLIENT 2 DISCONNESSO==${NC}"
 
 
 echo -e "${LBLUE}==AVVIO CLIENT 3/4 IN BACKGROUND==${NC}"
-./bin/client -p -f $socket -t $reqTime -l "$PWD/src/client.c","$PWD/src/server.c" -c "$PWD/src/client.c" -R n=0 -d readDir &
+./bin/client -p -f $socket -t $reqTime -l "$PWD/src/client.c","$PWD/src/server.c" -c "$PWD/src/client.c" -R n=0 -d test/readDir &
 client3=$!
 
 

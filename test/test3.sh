@@ -9,7 +9,7 @@ export socket=socket.sk
 
 # avvio server in background
 echo -e "${LGREEN}==AVVIO SERVER IN BACKGROUND==${NC}"
-valgrind --leak-check=full -q ./bin/server test/config3.txt &
+./bin/server test/config3.txt &
 
 sleep 3s
 SPID=$!
@@ -18,7 +18,7 @@ SPID=$!
 
 for i in {1..10}
 do
-	./test/test3_runClient.sh $i &
+	bash -c './test/test3_runClient.sh' &
 done
 
 s=30

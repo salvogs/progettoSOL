@@ -19,11 +19,11 @@ socket=socket.sk
 
 
 # src contiene esattamente 10 files; -W di bigFile.bin causa l'espulsione di api.c (capacita' nfile superata)
-./bin/client -p -f $socket -w src -W testfile/bigFile.bin -D ejectedDir
+./bin/client -p -f $socket -w src -W testfile/bigFile.bin -D test/ejectedDir
 echo -e "${LBLUE}==CLIENT 1 DISCONNESSO==${NC}"
 
 # -W di bigFile1.bin causa l'espulsione di tutti i file (in ordine FIFO)
-./bin/client -p -f $socket -W testfile/bigFile1.bin -D ejectedDir 
+./bin/client -p -f $socket -W testfile/bigFile1.bin -D test/ejectedDir 
 echo -e "${LBLUE}==CLIENT 2 DISCONNESSO==${NC}"
 
 
