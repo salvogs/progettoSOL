@@ -23,18 +23,18 @@ reqTime=200
 echo -e "${LBLUE}==CLIENT 1 DISCONNESSO==${NC}"
 
 
-./bin/client -p -f $socket -t $reqTime -W testfile/veryBigFile.bin,testfile/img.jpg,testfile/smallFile.bin
+./bin/client -p -f $socket -t $reqTime -W testfile/verybigFile.bin,testfile/img.jpg,testfile/smallFile.bin
 echo -e "${LBLUE}==CLIENT 2 DISCONNESSO==${NC}"
 
 
 
 
 echo -e "${LBLUE}==AVVIO CLIENT 3/4 IN BACKGROUND==${NC}"
-./bin/client -p -f $socket -t $reqTime -l "$PWD/src/client.c","$PWD/src/server.c" -c "$PWD/src/client.c" -R n=0 -d test/readDir &
+./bin/client -p -f $socket -t $reqTime -l "$PWD/src/client.c","$PWD/src/server.c" -W src/server.c -c "$PWD/src/client.c" -u "$PWD/src/server.c" -R n=0 -d test/readDir &
 client3=$!
 
 
-./bin/client -p -f $socket -t $reqTime -l "$PWD/src/client.c" -c "$PWD/src/server.c","$PWD/src/client.c" &
+./bin/client -p -f $socket -t $reqTime -W src/api.c -l "$PWD/src/server.c" -c "$PWD/src/server.c","$PWD/src/client.c" &
 client4=$!
 
 wait $client3

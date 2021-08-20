@@ -33,7 +33,7 @@ echo -e "${LBLUE}==CLIENT 3 DISCONNESSO==${NC}"
 
 
 # file troppo grande
-./bin/client -p -f $socket -W testfile/veryBigFile.bin
+./bin/client -p -f $socket -W testfile/verybigFile.bin
 echo -e "${LBLUE}==CLIENT 4 DISCONNESSO==${NC}"
 
 kill -s SIGHUP $SPID

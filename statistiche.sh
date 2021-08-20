@@ -22,7 +22,7 @@ fi
 
 echo -e "${LGREEN}Numero di operazioni${NC}"
 
-for op in "OPEN FILE" "OPEN-LOCK FILE" "READ FILE" "WRITE FILE" "APPEND TO FILE" "LOCK FILE" "UNLOCK FILE" "CLOSE FILE" "REMOVE FILE"
+for op in "OPEN FILE" "OPEN-LOCK FILE" "READ FILE" "READ N FILE" "WRITE FILE" "APPEND TO FILE" "LOCK FILE" "UNLOCK FILE" "CLOSE FILE" "REMOVE FILE"
 do
 	echo -e "${LBLUE}$op${NC} $(grep -c "op:$op.*" $logpath)"
 done
