@@ -170,7 +170,7 @@ int main(int argc, char* argv[]){
 
 	CREA_THREAD(&tidLogger,NULL,loggerFun,(void*)logPath)
 
-	logPrint("==AVVIO SERVER==",NULL,0,0,NULL);
+	logPrint("==AVVIO SERVER==",NULL,0,-1,NULL);
 
 	// spawn thread worker sempre in attesa di servire client
 	
@@ -185,7 +185,7 @@ int main(int argc, char* argv[]){
 	chk_neg1(masterFun(),EXIT_FAILURE);
 
 
-	logPrint("==ARRESTO SERVER==",NULL,0,0,NULL);
+	logPrint("==ARRESTO SERVER==",NULL,0,-1,NULL);
 	/* mando messaggio di terminazione (NULL) ai workers
 	(tanti quanti sono i workers) */
 
@@ -298,7 +298,7 @@ int masterFun(){
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
 					//fprintf(stdout,"client connesso %d\n",fd_client);
-					logPrint("CLIENT CONNESSO",NULL,fd_client,0,NULL);
+					logPrint("CLIENT CONNESSO",NULL,fd_client,-1,NULL);
 
 					LOCK(&(clientMux))
 					clientNum++;
@@ -388,11 +388,11 @@ void* workerFun(){
 			clientExit(fd);
 			continue;
 		}
-		if(ret == -1){
+		if(ret == -1 && errno != EPIPE && errno != ECONNRESET){
 			perror("op read");
-			return NULL;
+			exit(EXIT_FAILURE);
 		}
-		
+		errno = 0;
 		op = reqBuf[0] - '0';
 		
 	
@@ -408,7 +408,7 @@ void* workerFun(){
 
 				die_on_se(ret = open_file(storage,fd,pathname,flags,fdPending))
 				
-				logPrint((IS_O_LOCK_SET(flags)) ? "OPEN-LOCK FILE" : "OPEN FILE",pathname,fd,0,retToString(ret));
+				logPrint((IS_O_LOCK_SET(flags)) ? "OPEN-LOCK FILE" : "OPEN FILE",pathname,fd,-1,retToString(ret));
 
 				if(!flags || ret != SUCCESS)
 					free(pathname);
@@ -424,7 +424,7 @@ void* workerFun(){
 
 				die_on_se(ret = close_file(storage,fd,pathname))
 				
-				logPrint("CLOSE FILE",pathname,fd,0,retToString(ret));
+				logPrint("CLOSE FILE",pathname,fd,-1,retToString(ret));
 				
 			}
 			break;
@@ -497,7 +497,7 @@ void* workerFun(){
 					
 				
 				die_on_se(ret = remove_file(storage,fd,pathname,fdPending))
-				logPrint("REMOVE FILE",pathname,fd,0,retToString(ret));
+				logPrint("REMOVE FILE",pathname,fd,-1,retToString(ret));
 			}
 			break;
 
@@ -536,7 +536,7 @@ void* workerFun(){
 				if(ret != LOCKED)
 					chk_get_send(sendResponseCode(fd,ret))
 					
-				logPrint("LOCK FILE",pathname,fd,0,retToString(ret));
+				logPrint("LOCK FILE",pathname,fd,-1,retToString(ret));
 				
 			}
 			break;
@@ -555,7 +555,7 @@ void* workerFun(){
 				}
 
 				
-				logPrint("UNLOCK FILE",pathname,fd,0,retToString(ret));
+				logPrint("UNLOCK FILE",pathname,fd,-1,retToString(ret));
 			}
 			break;
 
@@ -606,7 +606,7 @@ int clientExit(int fd){
 
 
 	//fprintf(stdout,"client %d disconnesso\n",fd);
-	logPrint("CLIENT DISCONNESSO",NULL,fd,0,NULL);
+	logPrint("CLIENT DISCONNESSO",NULL,fd,-1,NULL);
 	LOCK(&(clientMux))
 	clientNum--;
 

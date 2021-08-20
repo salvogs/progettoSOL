@@ -20,6 +20,17 @@ char *realpath(const char *path, char *resolved_path);
 #define OC_ABS_TIME 10 //s
 
 
+#define chk_api(a,op)\
+	do{\
+		if((a) == -1 && errno != EEXIST && errno != ENOENT && errno != EFBIG && errno != ENOSPC && errno != EACCES){\
+			if(errno && errno != ECONNRESET && errno != EPIPE)\
+				perror(#a);\
+			op\
+			return -1;\
+		}\
+	}while(0);
+
+
 void printParseResult(parseT* parseResult){
 
 	int tmpSize = parseResult->argList->ndata;
@@ -82,69 +93,45 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
         if(isPointDir(file->d_name) == 0){ //non è una point-dir
             if(file->d_type == DT_DIR){
                 //if(n != 0)
-				recursiveVisit(absoluteName,n,limited,dirname); //chiamata ricorsiva
-				if(errno && errno != ECONNRESET && errno != EPIPE){
-					errno = 0;
-					return -1;
-				}
-					
+				chk_neg1(recursiveVisit(absoluteName,n,limited,dirname),-1) //chiamata ricorsiva
+						
 
 			}else if(file->d_type == DT_REG){
                 if(openFile(absoluteName,O_CREATE | O_LOCK) == 0){ //file creato sul server
 					//adesso bisogna inviare al server il contenuto del file
-					if(writeFile(absoluteName,dirname) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							closedir(d);
-							perror("writeFile");
-							return -1;
-						}
-					}	
+					chk_api(writeFile(absoluteName,dirname),;)
+			
 					if(limited)	(*n)--;
 						
-	
-					if(closeFile(absoluteName) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							perror("closeFile");
-							return -1;
-						}
-					}	
-					
+					chk_api(closeFile(absoluteName),;)
+											
 				}else{
-					if(errno && errno != EADDRINUSE && errno != ECONNRESET && errno != EPIPE){
+	
+					if(errno == EEXIST){
+						
+						errno = 0;
+						void* content = NULL;
+						size_t size = 0;
+						// provo ad aprire il file senza flag e a fare la append
+						chk_api(openFile(absoluteName,0),;)
+						
+						ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return -1)
+
+						chk_api(appendToFile(absoluteName,content,size,dirname),free(content);)
+
+						free(content);
+
+						if(limited) (*n)--;
+							
+						chk_api(closeFile(absoluteName),;)
+							
+					}else{
+						if(errno && errno != ECONNRESET && errno != EPIPE && errno != ENOENT){
+							perror("openFile");
+						}
 						closedir(d);
-						perror("openFile");
 						return -1;
 					}
-					errno = 0;
-					void* content = NULL;
-					size_t size = 0;
-					// provo ad aprire il file senza flag e a fare la append
-					if(openFile(absoluteName,0) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							perror("openFile");
-							free(pathname);
-							return -1;
-						}
-					}
-					ec_n(readFileFromDisk(absoluteName,&content,&size),0,"readFileFromDisk",return -1)
-
-					if(appendToFile(absoluteName,content,size,dirname) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							perror("appendToFile");
-							free(content);
-							free(pathname);
-							return -1;
-						} 
-					}
-						if(limited) (*n)--;
-						
-					if(closeFile(absoluteName) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							perror("closeFile");
-							return -1;
-						}
-					}
-					free(content);
 				} 
 			}
 		}
@@ -227,57 +214,33 @@ int writeHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 			if(openFile(pathname,O_CREATE | O_LOCK) == 0){
 				//adesso bisogna inviare al server il contenuto del file
-				if(writeFile(pathname,dirname) != 0){
-					if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("writeFile");
-						free(pathname);
-						return -1;
-					} 
-				}	
-				if(closeFile(pathname) != 0){
-					if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("closeFile");
-						return -1;
-					}
-				}
+				chk_api(writeFile(pathname,dirname),free(pathname);)
 					
+				chk_api(closeFile(pathname),free(pathname);)					
 			}else{
-				if(errno && errno != EADDRINUSE && errno != ECONNRESET && errno != EPIPE){
-					perror("openFile");
-					free(pathname);
-					return -1;
-				}
-				errno = 0;
-				// provo ad aprire il file senza flag e a fare la append
-				if(openFile(pathname,0) != 0){
-					if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("openFile");
-						free(pathname);
-						return -1;
-					}
-				}
+		
+				if(errno == EEXIST){
 
-
-				void* content = NULL;
-				ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return -1)
-
-				if(appendToFile(pathname,content,size,dirname) != 0){
-					if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("appendToFile");
-					if(content) free(content);
-					free(pathname);
-					return -1;
-					} 
-				}
-				if(content) free(content);
-
-				if(closeFile(pathname) != 0){
-					if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("closeFile");
-						return -1;
-					}	
-				}
+					errno = 0;
+					// provo ad aprire il file senza flag e a fare la append
+					chk_api(openFile(pathname,0),free(pathname);)
 					
+					void* content = NULL;
+					ec_n(readFileFromDisk(pathname,&content,&size),0,"readFileFromDisk",return -1)
+
+					chk_api(appendToFile(pathname,content,size,dirname),if(content){free(content);}free(pathname);)
+						
+					if(content) free(content);
+
+					chk_api(closeFile(pathname),free(pathname);)
+						
+				}else{
+					if(errno && errno != ECONNRESET && errno != EPIPE && errno != ENOENT){
+						perror("openFile");
+					}
+					free(pathname);
+					return -1;
+				}
 				
 			} 
 			
@@ -306,37 +269,23 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 
 		while(path){
 			// openFile senza flags
-			if(openFile(path,0) == 0){ //file creato sul server
-					//adesso bisogna leggere dal server il file
-					void* buf = NULL;
-					size_t size = 0;
-					if(readFile(path,&buf,&size) != 0){
-						if(errno && errno != ECONNRESET && errno != EPIPE){
-							perror("readFile");
-							return -1;
-						} 
-					}
-					if(dirname){
-						if(writeFileOnDisk(dirname,path,buf,size) != 0){
-							return -1;
-						}
-					}
-					if(buf)	free(buf);
-
-
-				if(closeFile(path) != 0){
-					if(errno && errno != ECONNRESET && errno != EPIPE){
-						perror("closeFile");
-						return -1;
-					}
+			chk_api(openFile(path,0),;)//file gia' creato sul server
+		
+			//adesso bisogna leggere dal server il file
+			void* buf = NULL;
+			size_t size = 0;
+			chk_api(readFile(path,&buf,&size),;)
+			if(dirname){
+				if(writeFileOnDisk(dirname,path,buf,size) != 0){
+					return -1;
 				}
-					
-			}else if(errno && errno != ECONNRESET && errno != EPIPE){
-				perror("openFile");
-				return -1;
-			} 
-			
-			//free(pathname);
+			}
+			if(buf)	free(buf);
+
+
+			chk_api(closeFile(path),;)		
+		
+
 			path = strtok_r(NULL,",",&save);
 			nanosleep(reqTime,NULL);
 		}
@@ -355,8 +304,8 @@ int readHandler(char opt,char* args,char* dirname,struct timespec* reqTime){
 		}
 		
 		
-		readNFiles(n,dirname);
-		//free(dirname);
+		chk_api(readNFiles(n,dirname),;)
+		
 		nanosleep(reqTime,NULL);
 	}
 
@@ -371,19 +320,10 @@ int lockUnlockHandler(char opt,char* args,struct timespec* reqTime){
 
 	while(path){
 		if(opt == 'l'){
-			if(lockFile(path) != 0){ 
-				if(errno && errno != ECONNRESET && errno != EPIPE){
-					perror("lockFile");
-					return -1;
-				} 
-			}
+			chk_api(lockFile(path),;)
+				
 		}else{ // unlock
-			if(unlockFile(path) != 0){ 
-				if(errno && errno != ECONNRESET && errno != EPIPE){
-					perror("unlockFile");
-					return -1;
-				} 
-			}
+			chk_api(unlockFile(path),;) 
 		}
 		
 	
@@ -404,16 +344,9 @@ int removeHandler(char* args,struct timespec* reqTime){
 
 	path = strtok_r(args,",",&save);
 
-	while(path){
-		if(!path){
-			perror("realpath");
-			return -1;
-		}
-		
-		if(removeFile(path) != 0 && errno && errno != ECONNRESET && errno != EPIPE){
-			perror("removeFile");
-			return -1;
-		}
+	while(path){	
+		chk_api(removeFile(path),;)
+			
 
 		path = strtok_r(NULL,",",&save);
 		nanosleep(reqTime,NULL);

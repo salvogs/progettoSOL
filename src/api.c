@@ -1,10 +1,24 @@
 #include "../include/utils.h"
 #include "../include/api.h"
-#include "../include/client.h"
+
 
 
 
 char *realpath(const char *path, char *resolved_path);
+
+#define errnoFromResponse(r)\
+	switch(r){\
+		case FILE_EXISTS:		errno = EEXIST; break;	\
+		case FILE_NOT_EXISTS:	errno = ENOENT; break;	\
+		case FILE_TOO_LARGE:	errno = EFBIG; break;	\
+		case STORE_FULL:		errno = ENOSPC; break;	\
+		case LOCKED:									\
+		case NOT_LOCKED:								\
+		case NOT_OPENED:		errno = EACCES; break;\
+		default:;\
+	}
+	
+	
 
 
 int openConnection(const char* sockname, int msec, const struct timespec abstime){
@@ -66,9 +80,6 @@ int closeConnection(const char* sockname){
 
 int openFile(const char* pathname, int flags){
 
-	// char* path = realpath(pathname,NULL);
-	// ec(path,NULL,"pathname",return -1);
-
 	// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
 
 
@@ -82,27 +93,19 @@ int openFile(const char* pathname, int flags){
 	//printf("reqLen: %d\n req: %s\n",reqLen,req);
 	
 
-	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		//perror("writen");
-		free(req);
-		return -1;
-	}
+	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
 
-	free(req);
 	
 	int response = getResponseCode(FD_CLIENT);
 	
 	PRINTER("OPEN FILE",pathname,response)
 
-	
+	if(response == SUCCESS)
+		return 0;
 
-	if(response != SUCCESS){
-		if(response == FILE_EXISTS)
-			errno = EADDRINUSE;
-		return -1;
-	}
-	errno = 0;
-	return 0;
+	errnoFromResponse(response)
+	
+	return -1;
 	
 }
 
@@ -121,13 +124,8 @@ int closeFile(const char* pathname){
 
 	snprintf(req,reqLen,"%d%4d%s",CLOSE_FILE,(int)strlen(pathname),pathname);
 		
-		
-	if(writen(FD_CLIENT,req,reqLen-1) == -1){
-		free(req);
-		return -1;
-	}
-
-	free(req);
+	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
+	
 	
 	int response = getResponseCode(FD_CLIENT);
 	
@@ -175,8 +173,6 @@ int writeFile(const char* pathname, const char* dirname){
 
 	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
 
-
-
 	
 	int response = getResponseCode(FD_CLIENT);
 
@@ -192,10 +188,14 @@ int writeFile(const char* pathname, const char* dirname){
 	
 	
 	PRINTER("WRITE FILE",pathname,response)
+	
 	if(response == SUCCESS){
 		PRINT_WRITE(fsize)
 		return 0;
 	}
+
+	errnoFromResponse(response);
+	
 	
 	return -1;
 
@@ -246,6 +246,8 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 		return 0;
 	}
 	
+	errnoFromResponse(response)
+
 	return -1;
 	
 
@@ -270,11 +272,12 @@ int removeFile(const char* pathname){
 	PRINTER("REMOVE FILE",pathname,response)
 
 
-	if(response != SUCCESS){
-		return -1;
-	}
+	if(response == SUCCESS)
+		return 0;
 
-	return 0;
+	errnoFromResponse(response)
+
+	return -1;
 	
 }
 
@@ -297,6 +300,7 @@ int readFile(const char* pathname, void** buf, size_t* size){
 
 	
 	if(response != SUCCESS && response != SENDING_FILE && response != EMPTY_FILE){
+		errnoFromResponse(response)
 		PRINTER("READ FILE",pathname,response)
 		return -1;
 	}
@@ -317,7 +321,6 @@ int readFile(const char* pathname, void** buf, size_t* size){
 	*buf = content;
 	
 	PRINTER("READ FILE",pathname,SUCCESS)
-
 	PRINT_READ(*size)
 	
 	
@@ -346,7 +349,7 @@ int readNFiles(int N, const char* dirname){
 	
 	if(response != SUCCESS && response != EMPTY_FILE && response != SENDING_FILE){
 		//PRINTER("READ FILE",pathname,response)
-		
+		errnoFromResponse(response)
 		return -1;
 	}
 
@@ -368,6 +371,7 @@ int readNFiles(int N, const char* dirname){
 		PRINT(fprintf(stdout,"==%d== Letti: %d files e %ld bytes\n",getpid(),readCounter,bytes))
 		return readCounter;
 	}else{
+		errnoFromResponse(response)
 		return -1;
 	}
 
@@ -375,6 +379,61 @@ int readNFiles(int N, const char* dirname){
 }
 
 
+
+
+
+int lockFile(const char* pathname){
+	// lockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen,1);
+	chk_null(req,-1)
+
+	snprintf(req,reqLen,"%d%4d%s",LOCK_FILE,(int)strlen(pathname),pathname);
+	
+	
+	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
+	
+
+	int response = getResponseCode(FD_CLIENT);
+		
+	PRINTER("LOCK FILE",pathname,response)
+
+	if(response == SUCCESS)
+		return 0;
+
+	errnoFromResponse(response)
+
+	return -1;
+}
+
+int unlockFile(const char* pathname){
+	// unlockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+
+	char* req = calloc(reqLen,1);
+	chk_null(req,-1)
+
+	snprintf(req,reqLen,"%d%4d%s",UNLOCK_FILE,(int)strlen(pathname),pathname);
+	
+	
+	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
+	
+
+	int response = getResponseCode(FD_CLIENT);
+		
+	PRINTER("UNLOCK FILE",pathname,response)
+
+	if(response == SUCCESS)
+		return 0;
+
+	errnoFromResponse(response)
+	
+
+	return -1;
+}
 
 int sendRequest(int fd, void* req, int len){
 	if(writen(FD_CLIENT,req,len) == -1){
@@ -386,130 +445,6 @@ int sendRequest(int fd, void* req, int len){
 	return 0;
 }
 
-int getResponseCode(int fd){
-	char res[RESPONSE_CODE_SIZE+1] = "";
-
-	int ret = readn(FD_CLIENT,&res,RESPONSE_CODE_SIZE);\
-	
-	if(ret == -1){\
-		return -1;\
-	}\
-	if(ret == 0){\
-		errno = ECONNRESET;\
-		return -1;\
-	}\
-	// return res - '0';
-	return atoi(res);
-}
-
-
-int getPathname(char** pathname){
-	// leggo lunghezza pathname
-	char* _pathLen = calloc(PATHNAME_LEN+1,1);
-	if(!_pathLen)
-		return SERVER_ERROR;
-
-	int ret = 0;
-
-	ret = readn(FD_CLIENT,_pathLen,PATHNAME_LEN);
-	if(ret == 0){
-		free(_pathLen);
-		return -1;
-	}
-	if(ret == -1){
-		free(_pathLen);
-		return SERVER_ERROR;
-	}
-
-	int pathLen = atoi(_pathLen);
-
-	free(_pathLen);
-	
-	
-	//leggo pathname 
-	char* path = calloc(pathLen+1,1);
-	chk_null(path,SERVER_ERROR)
-
-
-	ret = readn(FD_CLIENT,path,pathLen);
-
-	if(ret == 0){
-		free(path);
-		return -1;
-	}
-	if(ret == -1){
-		free(path);
-		return SERVER_ERROR;
-	}	
-
-	*pathname = path;
-	
-	return 0;
-}
-
-
-int getFile(size_t* size,void** content, char** pathname){
-	
-	char* path;
-	int ret = 0;
-	//se pathname passato allora voglio leggere anche pathname
-	if(pathname){
-		// leggo lunghezza pathname
-		if(getPathname(&path) != 0)
-			return -1;
-	}
-
-	
-	char* sizeBuf = calloc(MAX_FILESIZE_LEN+1,1);
-	chk_null(sizeBuf,-1)
-	
-	int size_;
-	void* content_;
-
-	//prima read di 10byte per size
-
-	ret = readn(FD_CLIENT,sizeBuf,MAX_FILESIZE_LEN);
-
-	if(ret == 0){
-		errno = ECONNRESET;
-		free(sizeBuf);
-		return -1;
-	}
-	if(ret == -1){
-		free(sizeBuf);
-		return -1;
-	}
-	
-	
-	size_ = atol(sizeBuf);
-
-	free(sizeBuf);
-	// alloco spazio per leggere il file
-
-	content_ = malloc(size_);
-	chk_null(content_,-1)
-
-	//leggo contenuto file
-	ret = readn(FD_CLIENT,content_,size_);
-
-	if(ret == 0){
-		errno = ECONNRESET;
-		free(content_);
-		return -1;
-	}
-	if(ret == -1){
-		free(content_);
-		return -1;
-	}
-
-	if(pathname) 
-		*pathname = path;
-
-	*size = size_;
-	*content = content_;
-
-	return 0;
-}
 
 int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCounter){
 	void* content = NULL;
@@ -543,54 +478,106 @@ int getEjectedFile(int response, const char* dirname, size_t* bytes, int* readCo
 }
 
 
-int lockFile(const char* pathname){
-	// lockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
+int getResponseCode(int fd){
+	char res[RESPONSE_CODE_SIZE+1] = "";
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
-
-	char* req = calloc(reqLen,1);
-	chk_null(req,-1)
-
-	snprintf(req,reqLen,"%d%4d%s",LOCK_FILE,(int)strlen(pathname),pathname);
+	int ret = readn(FD_CLIENT,&res,RESPONSE_CODE_SIZE);
 	
-	
-	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
-	
-
-	int response = getResponseCode(FD_CLIENT);
-		
-	PRINTER("LOCK FILE",pathname,response)
-
-
-	if(response != SUCCESS){
+	if(ret != RESPONSE_CODE_SIZE){
 		return -1;
 	}
+	
 
+	return atoi(res);
+}
+
+
+int getPathname(char** pathname){
+	// leggo lunghezza pathname
+	char* _pathLen = calloc(PATHNAME_LEN+1,1);
+	if(!_pathLen)
+		return SERVER_ERROR;
+
+	int ret = 0;
+
+	ret = readn(FD_CLIENT,_pathLen,PATHNAME_LEN);
+
+	if(ret != PATHNAME_LEN){
+		free(_pathLen);
+		return -1;
+	}
+	
+
+	int pathLen = atoi(_pathLen);
+
+	free(_pathLen);
+	
+	
+	//leggo pathname 
+	char* path = calloc(pathLen+1,1);
+	chk_null(path,SERVER_ERROR)
+
+
+	ret = readn(FD_CLIENT,path,pathLen);
+
+	if(ret != pathLen){
+		free(path);
+		return -1;
+	}
+	
+	*pathname = path;
+	
 	return 0;
 }
 
-int unlockFile(const char* pathname){
-	// unlockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
-
-	char* req = calloc(reqLen,1);
-	chk_null(req,-1)
-
-	snprintf(req,reqLen,"%d%4d%s",UNLOCK_FILE,(int)strlen(pathname),pathname);
+int getFile(size_t* size,void** content, char** pathname){
 	
+	char* path;
+	int ret = 0;
+	//se pathname passato allora voglio leggere anche pathname
+	if(pathname){
+		// leggo lunghezza pathname
+		if(getPathname(&path) != 0)
+			return -1;
+	}
+
 	
-	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
+	char* sizeBuf = calloc(MAX_FILESIZE_LEN+1,1);
+	chk_null(sizeBuf,-1)
 	
+	int size_;
+	void* content_;
 
-	int response = getResponseCode(FD_CLIENT);
-		
-	PRINTER("UNLOCK FILE",pathname,response)
+	//prima read di 10byte per size
 
-
-	if(response != SUCCESS){
+	ret = readn(FD_CLIENT,sizeBuf,MAX_FILESIZE_LEN);
+	if(ret != MAX_FILESIZE_LEN){
+		free(sizeBuf);
 		return -1;
 	}
+		
+	size_ = atol(sizeBuf);
+
+	free(sizeBuf);
+	// alloco spazio per leggere il file
+
+	content_ = malloc(size_);
+	chk_null(content_,-1)
+
+	//leggo contenuto file
+	ret = readn(FD_CLIENT,content_,size_);
+
+	if(ret != size_){
+		free(content_);
+		return -1;
+	}
+	
+	if(pathname) 
+		*pathname = path;
+
+	*size = size_;
+	*content = content_;
 
 	return 0;
 }
