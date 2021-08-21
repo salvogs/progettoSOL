@@ -443,15 +443,16 @@ void* workerFun(){
 			
 	
 
-				die_on_se(ret = write_append_file(storage,fd,pathname,size,content,ejected,fdPending))
+				die_on_se(ret = write_append_file(storage,op,fd,pathname,size,content,ejected,fdPending))
 			
 				free(content);
 
 
-				// mando i file espulsi
+				// mando i file espulsi (solo quelli modificati)
 				while(ejected->ndata){
 					fT* ef = dequeue(ejected);	
-					chk_get_send(sendFile(fd,ef->pathname,ef->size,ef->content))
+					if(ef->modified)
+						chk_get_send(sendFile(fd,ef->pathname,ef->size,ef->content))
 
 					free(ef->pathname);
 					freeFile(ef);
