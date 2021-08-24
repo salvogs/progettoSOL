@@ -48,7 +48,25 @@ int destroy_fileStorage(fsT* storage){
 
 }
 
-
+/**
+ * \brief gestisce richiesta apertura file
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha fatto richiesta
+ *  
+ * \param pathname path del file 
+ * 
+ * \param flags O_CREATE/O_LOCK se si vuole creare e/o lockare file
+ * 
+ * \param fdPending coda client che erano in attesa sui file espulsi
+ * 
+ * \retval SUCCESS(0): successo
+ * \retval SERVER_ERROR: errore
+ * \retval FILE_EXISTS: file esiste e flag O_CREATE settato
+ * \retval FILE_NOT_EXISTS: file non esiste e flag O_CREATE non settato
+ * \retval LOCKED : file locato da un altro client e O_LOCK settato
+ */
 int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPending){
 
 	short int create = IS_O_CREATE_SET(flags), lock = IS_O_LOCK_SET(flags);
@@ -63,11 +81,6 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPe
 			UNLOCK(&(storage->smux));
 			return FILE_EXISTS; // bisogna aprirlo senza O_CREATE
 		}
-		// if(lock){
-		// 	// LOCK
-			
-		// }	
-		
 		
 
 		LOCK(&(fPtr->ordering))
@@ -83,11 +96,20 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPe
 		UNLOCK(&(fPtr->ordering))
 		UNLOCK(&(fPtr->mux))
 		
+
+		if(lock){
+			if(fPtr->fdlock && fPtr->fdlock != fdClient)
+				ret = LOCKED;
+			else
+				fPtr->fdlock = fdClient;
+		}
+
 		
 		// metto fdClient in coda ai fd che hanno aperto il file
-		if(enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0){
+		if(!ret && enqueue(fPtr->fdopen,CAST_FD(fdClient)) != 0)
 			ret = SERVER_ERROR;
-		}
+		
+	
 
 		LOCK(&(fPtr->mux))
 
@@ -113,6 +135,23 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPe
 	return ret;
 }
 
+
+
+
+/**
+ * \brief gestisce richiesta chiusura file
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha fatto richiesta
+ *  
+ * \param pathname path del file 
+ * 
+ * \retval SUCCESS(0): successo
+ * \retval SERVER_ERROR: errore 
+ * \retval FILE_NOT_EXISTS: il file non esiste
+ * \retval NOT_OPENED: il file non è aperto da fdClient
+ */
 int close_file(fsT* storage, int fdClient, char* pathname){
 
 	// lock dello storage
@@ -157,7 +196,36 @@ int close_file(fsT* storage, int fdClient, char* pathname){
 }
 
 
-int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected, queue* fdPending){
+
+
+/**
+ * \brief gestisce richiesta di scrittura di un file già esistente. In ogni caso si tratta di una append
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param mode flag che se == 1 indica che si tratta di una append
+ * 
+ * \param fdClient client che ha fatto richiesta 
+ * 
+ * \param pathname path del file
+ * 
+ * \param size size file
+ * 
+ * \param content contenuto file
+ * 
+ * \param ejected file espulsi per fare spazio
+ * 
+ * \param fdPending client in attesa dei file espulsi da avvisare
+ * \retval SUCCESS(0): se successo,
+ * \retval FILE_NOT_EXISTS: se il file non esiste
+ * \retval FILE_TOO_LARGE: file troppo grande per essere memorizzato
+ * \retval STORE_FULL: store attualmente pieno
+ * \retval LOCKED : il file è lockato da un altro client
+ * \retval NOT_OPENED: il file non è aperto da fdClient
+ * \retval BAD_REQUEST: fdClient non può effettuare la prima scrittura
+ * \retval SERVER_ERROR: errore
+ */
+int write_append_file(fsT* storage, int mode, int fdClient,char* pathname, size_t size, void* content, queue* ejected, queue* fdPending){
 
 	LOCK(&(storage->smux))
 
@@ -167,9 +235,8 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		UNLOCK(&(storage->smux))
 		return FILE_NOT_EXISTS;
 	}
-
 	
-
+	
 
 	if(size > storage->maxCapacity){
 		/* anche rimuovendo tutti i file attualmente presenti 
@@ -187,7 +254,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		fT* ef = eject_file(storage,fPtr->pathname,fdClient,1);
 		if(!ef){
 			UNLOCK(&(storage->smux))
-			return FILE_TOO_LARGE;
+			return STORE_FULL;
 		}
 		
 		// metto in coda i fd dei client da risvegliare 
@@ -203,8 +270,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 			return SERVER_ERROR;
 		}
 	
-		storage->currCapacity -= ef->size;
-		
+			
 		
 	}
 
@@ -227,7 +293,7 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		ret = LOCKED;
 	}
 	
-	//  !ret --- ret == SUCCESS
+
 
 	if(!ret && !findQueue(fPtr->fdopen,CAST_FD(fdClient))){
 		ret = NOT_OPENED;
@@ -239,10 +305,11 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 		fPtr->fdwrite = 0;
 	}
 
+	if(!ret && mode == APPEND_TO_FILE)	
+		fPtr->modified = 1;
+
 	if(!ret && size){ // modifico il contenuto solo se e' stato effettivamente ricevuto
-		
-
-
+	
 		// in ogni caso devo appendere al file
 		fPtr->content = (void*) realloc(fPtr->content,fPtr->size + size);
 		if(fPtr->content){
@@ -277,7 +344,26 @@ int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, voi
 }
 
 
-
+/**
+ * \brief gestisce richiesta di lettura file
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha fatto richiesta 
+ * 
+ * \param pathname path del file
+ * 
+ * \param size puntatore dove memorizzare size file letto
+ * 
+ * \param content puntatore dove memorizzare contenuto file letto
+ * 
+ * \retval SUCCESS(0): successo o EMPTY_FILE se file vuoto
+ * \retval FILE_NOT_EXISTS: il file non esiste
+ * \retval LOCKED : il file è lockato da un altro client
+ * \retval NOT_OPENED: il file non è aperto da fdClient
+ * \retval SERVER_ERROR: errore
+ *
+ */
 int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** content){
 
 
@@ -318,7 +404,7 @@ int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** co
 		ret = LOCKED;
 	}
 	
-	//  !ret --- ret == SUCCESS
+	
 
 	if(!ret && !findQueue(fPtr->fdopen,CAST_FD(fdClient))){
 		ret = NOT_OPENED;
@@ -353,6 +439,25 @@ int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** co
 
 }
 
+
+
+
+/**
+ * \brief gestisce richiesta di leggere n file casuali
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param n numero di file richiesti
+ * 
+ * \param fdClient client che ha fatto richiesta 
+ * 
+ * \param ejected coda di file letti
+ * 
+ * \retval numero di file letti: successo
+ * \retval SERVER_ERROR: errore
+ * \note la lock sullo store permette di leggere tutti i file in mutua esclusione
+ *
+ */
 int read_n_file(fsT* storage,int n,int fdClient, queue* ejected){
 
 	
@@ -363,16 +468,18 @@ int read_n_file(fsT* storage,int n,int fdClient, queue* ejected){
 
 	data* curr = storage->filesQueue->head;
 	fT* fPtr = NULL, *ef = NULL;
-	int ret = SUCCESS;
+	int nsave = n;
 
-	while(!ret && n && curr){
+	while(n && curr){
 		
 		fPtr = (fT*)(curr->data);
 
 		
 		// faccio copia del file e lo inserisco in coda ai file da espellere (inviare)
-		if(!(ef = fileCopy(fPtr)) || enqueue(ejected,ef) != 0)
-			ret = SERVER_ERROR;
+		if(!(ef = fileCopy(fPtr)) || enqueue(ejected,ef) != 0){
+			UNLOCK(&(storage->smux))
+			return SERVER_ERROR;
+		}
 		
 		curr = curr->next;
 		n--;
@@ -380,12 +487,28 @@ int read_n_file(fsT* storage,int n,int fdClient, queue* ejected){
 
 	UNLOCK(&(storage->smux))
 
-	return ret;
+	return nsave - n;
 
 }
 
 
-
+/**
+ * \brief gestisce richiesta rimozione file
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha fatto richiesta
+ *  
+ * \param pathname path del file 
+ * 
+ * \param fdPending coda dove memorizzare i client che erano in attesa 
+ * per poi notificarli che il file non esiste più 
+ * 
+ * \retval SUCCESS(0): successo
+ * \retval SERVER_ERROR: errore
+ * \retval FILE_NOT_EXISTS: il file non esiste
+ * \retval NOT_LOCKED: il file non è lockato da fdClient
+ */
 int remove_file(fsT* storage, int fdClient, char* pathname, queue* fdPending){
 	
 	// lock dello storage
@@ -442,6 +565,21 @@ int remove_file(fsT* storage, int fdClient, char* pathname, queue* fdPending){
 		
 }
 
+
+/**
+ * \brief setta il flag O_LOCK al file
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha fatto richiesta
+ *  
+ * \param pathname path del file 
+ * 
+ * \retval SUCCESS(0): successo o file già lockato da fdClient
+ * \retval SERVER_ERROR: errore
+ * \retval FILE_NOT_EXISTS: il file non esiste
+ * \retval LOCKED : il file è lockato da un altro client
+ */
 int lock_file(fsT* storage, int fdClient, char* pathname){
 	
 	// lock dello storage
@@ -496,6 +634,23 @@ int lock_file(fsT* storage, int fdClient, char* pathname){
 		
 }
 
+
+/**
+ * \brief reimposta il flag O_LOCK al file a 0 o ad un client in attesa
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha fatto richiesta
+ *  
+ * \param pathname path del file 
+ * 
+ * \param newFdLock puntatore dove memorizzare l'eventuale nuovo owner della lock
+ * 
+ * \retval SUCCESS(0): successo 
+ * \retval SERVER_ERROR: errore
+ * \retval FILE_NOT_EXISTS: il file non esiste
+ * \retval NOT_LOCKED: il file non è lockato da fdClient
+ */
 int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock){
 	
 	// lock dello storage
@@ -558,7 +713,25 @@ int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock){
 
 
 
-
+/**
+ * \brief inizializza e inserisce un file nello store
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client che ha inviato il file
+ *  
+ * \param pathname path del file da memorizzare
+ * 
+ * \param lock flag O_LOCK
+ * 
+ * \param fdPending coda dei file eventualmente espulsi
+ *  per memorizzare quello inviato
+ * \retval 0: successo
+ * \retval SERVER_ERROR: errore
+ * \retval STORE_FULL: attualmente non è possibile memorizzare il file
+ * 
+ * \note assume che lo store sia lockato dal chiamante e quindi di lavorare in mutua esclusione
+ */
 int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdPending){
 
 	// controllo che ci sia spazio a sufficienza 		
@@ -592,7 +765,7 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 	fPtr->pathname = pathname;
 	fPtr->size = 0;
 	fPtr->content = NULL;
-	
+	fPtr->modified = 0;
 	fPtr->fdlock = fdClient;
 	fPtr->fdwrite = fdClient;
 
@@ -633,15 +806,28 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 
 
 
-
+/**
+ * \brief rimuove un file dallo store 
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fPtr file interessato
+ *  
+ * \param freeData se == 1 il file sara' anche deallocato
+ * 
+ * \retval SUCCESS(0): successo
+ * \retval SERVER_ERROR: errore
+ * 
+ * \note assume che lo store sia lockato dal chiamante e quindi di lavorare in mutua esclusione
+ */
 int store_remove(fsT* storage, fT* fPtr, int freeData){
 	char* rmpath = fPtr->pathname;
 	// rimuovo dalla coda di rimpiazzamento
 	if(removeFromQueue(storage->filesQueue,fPtr,0) != 0)
 		return -1; 
 
+	storage->currCapacity -= fPtr->size;
 	// rimuovo dalla hash table
-
 	if(freeData){
 		if(icl_hash_delete(storage->ht,rmpath,free,freeFile) == -1)
 			return -1; 
@@ -657,7 +843,19 @@ int store_remove(fsT* storage, fT* fPtr, int freeData){
 
 
 
-
+/**
+ * \brief chiude/unlocka tutti i file aperti/lockati da fdClient 
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param fdClient client interessato
+ *  
+ * \param fdPending coda sulla quale inserire i client da notificare dopo avergli dato la lock
+ * 
+ * \retval SUCCESS(0):successo
+ * \retval SERVER_ERROR: errore
+ * 
+ */
 int remove_client(fsT* storage, int fdClient, queue* fdPending){
 	
 	// lock dello storage
@@ -686,6 +884,12 @@ int remove_client(fsT* storage, int fdClient, queue* fdPending){
 
 		UNLOCK(&(fPtr->ordering))
 		UNLOCK(&(fPtr->mux))
+
+		if(fPtr->fdwrite == fdClient){
+			// resetto il client che può effettuare la write
+			fPtr->fdwrite = 0;
+		}
+
 
 
 		// rimuovo fdClient dai client che hanno aperto il file
@@ -737,13 +941,24 @@ int remove_client(fsT* storage, int fdClient, queue* fdPending){
 
 }
 
+
+
+// copia fPtr e restituisce il nuovo puntatore
 fT* fileCopy(fT* fPtr){
 	fT* cp = NULL;
 
 	chk_null(cp = malloc(sizeof(fT)),NULL)
+	cp->content = NULL;
+	cp->pathname = NULL;
+
 
 	cp->size = fPtr->size;
-	if(!(cp->pathname = strndup(fPtr->pathname,strlen(fPtr->pathname))) || !(cp->content = (void*)malloc(cp->size))){
+
+	if(cp->size){
+		chk_null_op(cp->content = (void*)malloc(cp->size),free(cp),NULL)
+	}
+
+	if(!(cp->pathname = strndup(fPtr->pathname,strlen(fPtr->pathname)))){
 		if(cp->pathname)
 			free(cp->pathname);
 
@@ -751,14 +966,19 @@ fT* fileCopy(fT* fPtr){
 			free(cp->content);
 	
 		free(cp);
-		
 		return NULL;
 	}
 
 	// non copio la coda dei fd che hanno aperto il file e di quelli in attesa
 	cp->fdopen = NULL;
 	cp->fdpending = NULL;
-	memcpy(cp->content,fPtr->content,cp->size);
+
+	if(cp->size)
+		memcpy(cp->content,fPtr->content,cp->size);
+	
+	
+	
+	cp->modified = fPtr->modified;
 
 	return cp;
 }
@@ -766,11 +986,27 @@ fT* fileCopy(fT* fPtr){
 
 
 
-
+/**
+ * Algoritmo di rimpiazzamento che scorre la coda di tutti i file 
+ * attualmente presenti nel server e ritorna (se possibile) il primo 
+ * che rispetta le condizioni
+ * 
+ * \param storage puntatore allo store 
+ * 
+ * \param pathname path del file che ha causato l'espulsione 
+ * 
+ * \param fdClient client che ha causato l'espulsione 
+ * 
+ * \param chkEmpty se == 1 l'algoritmo salta i file vuoti
+ * 
+ * \note viene saltato, se esiste, il file 'pathname' 
+ * vengono saltati i file lockati da altri client
+ * 
+*/
 fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 	
 	storage->tryEjectFile++;
-	logPrint("==ALGORIMO RIMPIAZZAMENTO==",NULL,0,0,NULL);
+	logPrint("==ALGORIMO RIMPIAZZAMENTO==",NULL,0,-1,NULL);
 
 
 	queue* fq = storage->filesQueue;
@@ -800,7 +1036,7 @@ fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 
 		if((tmp->fdlock == fdClient || !(tmp->fdlock)) && (pathname ? (strcmp(tmp->pathname,pathname) != 0) : 1) && (chkEmpty ? tmp->size : 1)){
 			storage->ejectedFileNum++;
-			logPrint("ESPULSO",tmp->pathname,0,0,NULL);
+			logPrint("ESPULSO",tmp->pathname,0,tmp->size,NULL);
 			return tmp;
 		}		
 		curr = curr->next;
@@ -819,15 +1055,15 @@ void print_final_info(fsT* storage,int maxClientNum){
 	
 	fprintf(stdout,"Max file memorizzati: %d\n",storage->maxFileNumStored);
 
-	fprintf(stdout,"Max Mbyte memorizzati: %.2f\n",(float)(storage->maxCapacityStored)/1000000);
+	fprintf(stdout,"Max Mbyte memorizzati: %f\n",(float)(storage->maxCapacityStored)/1000000);
 	fprintf(stdout,"Esecuzioni dell'algoritmo di rimpiazzamento: %d\n",storage->tryEjectFile);
 	fprintf(stdout,"File espulsi: %d\n",storage->ejectedFileNum);
 
 	fprintf(stdout,"File presenti alla chiusura: %d\n",storage->currFileNum);
 
 	char buf[LOGEVENTSIZE] = "";
-	snprintf(buf,LOGEVENTSIZE,"==STATS==MAXNFILE %d MAXMBYTE %.2f MAXCLIENT %d",storage->maxFileNumStored,(float)(storage->maxCapacityStored)/1000000,maxClientNum);
-	logPrint(buf,NULL,0,0,NULL);
+	snprintf(buf,LOGEVENTSIZE,"==STATS==MAXNFILE %d MAXMBYTE %f MAXCLIENT %d",storage->maxFileNumStored,(float)(storage->maxCapacityStored)/1000000,maxClientNum);
+	logPrint(buf,NULL,0,-1,NULL);
 
 	// stampo lista file (path) presenti alla chiusura
 	data* curr = storage->filesQueue->head;
@@ -843,12 +1079,6 @@ void print_final_info(fsT* storage,int maxClientNum){
 
 
 
-
-
-
-
-
-
 void freeFile(void* fptr){
 	fT* fPtr = (fT*) fptr;
 	if(fPtr){
@@ -860,8 +1090,6 @@ void freeFile(void* fptr){
 	}
 	return;
 }
-
-
 
 
 int cmpFile(void* f1, void* f2){
