@@ -19,21 +19,23 @@ char *strndup(const char *s, size_t n);
 
 
 // Macro controllo errori
-#define ec(s, r, m, e) \
+#define ec(s, r, m, e) do{\
     if ((s) == (r))    \
     {   \
         if(errno)               \
             perror(m);     \
         e;           \
-    }
+    }\
+}while(0);
 
-#define ec_n(s, r, m, e) \
+#define ec_n(s, r, m, e) do{\
     if ((s) != (r))    \
     {   \
         if(errno)               \
             perror(m);     \
         e;           \
-    }
+    }\
+}while(0);
 
 #define chk_null(s,r) \
     if((s) == NULL) \
@@ -78,7 +80,7 @@ char *strndup(const char *s, size_t n);
 // chk read e write verso i client
 #define chk_get_send(s) if(1){\
     int r = s;\
-    if(r == SERVER_ERROR) \
+    if(r == SERVER_ERROR && errno != EPIPE && errno != ECONNRESET && errno != EBADF) \
     {               \
         exit(EXIT_FAILURE);   \
     }\
@@ -103,35 +105,13 @@ char *strndup(const char *s, size_t n);
 
 
 
-// ritorna
-//   0: ok
-//   1: non e' un numero
-//   2: overflow/underflow
-//
+
 int isNumber(const char* s, long* n);
 
 
-
-
-/** Evita letture parziali
- *
- *   \retval -1   errore (errno settato)
- *   \retval  0   se durante la lettura da fd leggo EOF
- *   \retval size se termina con successo
- */
 ssize_t readn(int fd, void *ptr, size_t n);
 
-
-/** Evita scritture parziali
- *
- *   \retval -1   errore (errno settato)
- *   \retval  0   se durante la scrittura la write ritorna 0
- *   \retval  1   se la scrittura termina con successo
- */
 ssize_t writen(int fd, void *ptr, size_t n);
-
-
-
 
 int readFileFromDisk(const char* pathname, void** content, size_t* size);
 

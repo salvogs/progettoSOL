@@ -42,14 +42,15 @@ char* logPath;
 fsT* storage;
 
 
-volatile sig_atomic_t noMoreClient = 0;
-volatile sig_atomic_t noMoreRequest = 0;
-
-
-
 int clientNum = 0;
 int maxClientNum = 0;
 pthread_mutex_t clientMux = PTHREAD_MUTEX_INITIALIZER;
+
+
+
+
+volatile sig_atomic_t noMoreClient = 0;
+volatile sig_atomic_t noMoreRequest = 0;
 
 void signalHandler(int signum){
 	switch(signum){
@@ -71,44 +72,6 @@ void signalHandler(int signum){
 	return;
 }
 
-char* retToString(int ret){
-	char* toRet = NULL;
-	switch(ret){
-			case SUCCESS:
-				toRet =  "SUCCESS";
-			break;
-			case EMPTY_FILE:
-				toRet =  "EMPTY_FILE";
-			break;
-			case FILE_EXISTS:
-				toRet =  "FILE_EXISTS";
-			break;
-			case FILE_NOT_EXISTS:
-				toRet =  "FILE_NOT_EXISTS";
-			break;
-			case SERVER_ERROR:
-				toRet =  "SERVER_ERROR";
-			break;
-			case BAD_REQUEST:
-				toRet =  "BAD_REQUEST";
-			break;
-			case FILE_TOO_LARGE:
-				toRet =  "FILE_TOO_LARGE";
-			break;
-			case LOCKED:
-				toRet =  "LOCKED";
-			break;
-			case NOT_LOCKED:
-				toRet =  "NOT_LOCKED";
-			break;
-			case NOT_OPENED:
-				toRet =  "NOT_OPENED";
-			break;
-			default:;break;
-		}
-	
-	return toRet; 
-}
 
 int main(int argc, char* argv[]){
 	//con l'avvio del server deve essere specificato il path del file di config
@@ -141,9 +104,8 @@ int main(int argc, char* argv[]){
 	ec(sigemptyset(&set),-1,"sigemptyset",return 1)
 	ec(pthread_sigmask(SIG_SETMASK,&set,NULL),-1,"pthread_sigmask",return 1)
 	
-	/*
-		effettuo il parsing del il file di configurazione 
-	*/
+
+	//	effettuo il parsing del il file di configurazione 
 	parseT* config = parseConfig(argv[1],DELIM_CONFIG_FILE);
 	chk_null(config,1);
 
@@ -159,12 +121,12 @@ int main(int argc, char* argv[]){
 		 "\033[0;32mWORKERNUM:\033[0m %d, \033[0;32mSOCKNAME:\033[0m %s, \033[0;32mLOGPATH:\033[0m %s\n"\
 		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath);
 
-
-	ec(requestQueue = createQueue(NULL,NULL),NULL,"requestQueue create",return 1);
 	
-	ec(pipe(pfd),-1,"pipe create",return 1)
+	ec(requestQueue = createQueue(NULL,NULL),NULL,"requestQueue create",return EXIT_FAILURE);
 	
-
+	ec(pipe(pfd),-1,"pipe create",return EXIT_FAILURE)
+	
+	// creazione thread logger
 	pthread_t tidLogger;
 	chk_neg1(logCreate(logPath),SERVER_ERROR);
 
@@ -177,18 +139,16 @@ int main(int argc, char* argv[]){
 	pthread_t* tid; //array dove mantenere tid dei worker
 	tid = spawnWorker(workerNum);
 	
-	/*
-		accetto richieste da parte dei client
-		e le faccio servire dai thread worker
-	*/
 	// funzione eseguita dal thread main (dispatcher)
 	chk_neg1(masterFun(),EXIT_FAILURE);
 
+	
+	
+	/********** TERMINAZIONE **********/
+	
 
-	logPrint("==ARRESTO SERVER==",NULL,0,-1,NULL);
 	/* mando messaggio di terminazione (NULL) ai workers
 	(tanti quanti sono i workers) */
-
 	for(int i = 0; i < workerNum; i++){
 		LOCK(&request_mux)
 		ec(enqueue(requestQueue,NULL),1,"enqueue",return 1)
@@ -198,9 +158,7 @@ int main(int argc, char* argv[]){
 	// join workers
 	for(int i = 0; i < workerNum; i++){
 		pthread_join(tid[i],NULL);
-		// logPrint("JOIN THREAD",NULL,tid[i],0,NULL);
 	}
-
 	
 	
 	destroyQueue(requestQueue,0);
@@ -212,6 +170,7 @@ int main(int argc, char* argv[]){
 	
 	// stampo sunto operazioni
 	print_final_info(storage,maxClientNum);
+	logPrint("==ARRESTO SERVER==",NULL,0,-1,NULL);
 
 	logDestroy();
 	
@@ -227,7 +186,7 @@ int main(int argc, char* argv[]){
 
 
 
-
+// funzione eseguita dal thread main
 int masterFun(){
 
 	int fd_skt, fd_num = 0,fd;
@@ -242,7 +201,7 @@ int masterFun(){
 	//assegno un indirizzo a un socket
 	ec(bind(fd_skt,(struct sockaddr *)&sa,sizeof(sa)),-1,"server skt bind",return 1);
 	
-	//segnalo che il socket accetta connessioni
+	//il socket accetta connessioni
 	ec(listen(fd_skt,SOMAXCONN),-1,"server listen",return 1);
 
 
@@ -265,6 +224,7 @@ int masterFun(){
 		
 		//ad ogni iterazione set cambia, è opportuno farne una copia
 		read_set = set;
+
 		//vedo quali descrittori sono attivi fino a fd_num+1
 		if(select(fd_num+1,&read_set,NULL,NULL,NULL) == -1){
 			if(errno != EINTR){
@@ -297,7 +257,7 @@ int masterFun(){
 				//se è proprio fd_sdk faccio la accept che NON SI BLOCCHERÀ
 				if(fd == fd_skt){
 					ec(fd_client = accept(fd_skt,NULL,0),-1,"server accept",return 1);
-					//fprintf(stdout,"client connesso %d\n",fd_client);
+					
 					logPrint("CLIENT CONNESSO",NULL,fd_client,-1,NULL);
 
 					LOCK(&(clientMux))
@@ -306,7 +266,7 @@ int masterFun(){
 						maxClientNum = clientNum;
 
 					UNLOCK(&(clientMux))
-					//nella mascheraa set metto a 1 il bit della fd_client(ora è attivo)
+					//nella maschera set metto a 1 il bit della fd_client(ora è attivo)
 					FD_SET(fd_client,&set);
 					//tengo sempre aggiornato il descrittore con indice massimo
 					if(fd_client > fd_num)
@@ -314,7 +274,7 @@ int masterFun(){
 
 				}else if(fd == pfd[0]){
 					
-					read(fd,&fd_client,sizeof(int));
+					ec(read(fd,&fd_client,sizeof(int)),-1,"pipe read",exit(EXIT_FAILURE))
 					
 					
 					if(fd_client == 0) // ultimo client disconnesso
@@ -322,7 +282,7 @@ int masterFun(){
 					if(fd_client == -1){
 						continue;
 					}
-						// break; 
+
 					
 					FD_SET(fd_client,&set);
 
@@ -349,6 +309,9 @@ int masterFun(){
 	return 0;
 }
 
+
+
+// funzione eseguita da ogni thread worker
 void* workerFun(){
 	int op = 0,ret = 0;
 		
@@ -363,11 +326,12 @@ void* workerFun(){
 	
 	while(1){
 		
+
+		// thread si mette in attesa fin quando la coda è vuota
 		LOCK(&request_mux);
 		while(isQueueEmpty(requestQueue))
 			WAIT(&cond,&request_mux);
-		//fprintf(stdout,"sono il thread %ld\n", pthread_self());
-		// printQueueInt(requestQueue);
+		
 
 		void* fd_ = dequeue(requestQueue);
 		if(!isQueueEmpty(requestQueue))
@@ -378,8 +342,6 @@ void* workerFun(){
 
 		int fd = (long)fd_;
 
-			
-		//memset(reqBuf,'\0',OP_REQUEST_SIZE);
 		
 		//leggo operazione
 		
@@ -388,7 +350,7 @@ void* workerFun(){
 			clientExit(fd);
 			continue;
 		}
-		if(ret == -1 && errno != EPIPE && errno != ECONNRESET){
+		if(ret == -1 && errno != EPIPE && errno != ECONNRESET && errno != EBADF){
 			perror("op read");
 			exit(EXIT_FAILURE);
 		}
@@ -398,7 +360,7 @@ void* workerFun(){
 	
 		switch(op){
 			case OPEN_FILE:{
-				// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
+				
 				chk_get_send(getPathname(fd,&pathname))
 
 				int flags = 0;
@@ -510,7 +472,7 @@ void* workerFun(){
 				
 
 				die_on_se(ret = read_n_file(storage,n,fd,ejected))
-				
+
 				int sizeSum = 0;
 				// mando i file 
 				while(ejected->ndata){
@@ -566,6 +528,9 @@ void* workerFun(){
 			}
 		}
 
+
+
+
 		if(pathname && op != OPEN_FILE){
 			free(pathname);
 		}
@@ -584,6 +549,7 @@ void* workerFun(){
 
 		// scrivo fd sulla pipe in comune col dispatcher
 		ec(write(pfd[1],&fd,sizeof(int)),-1,"write pipe",exit(EXIT_FAILURE));
+		
 	}
 
 	destroyQueue(ejected,1);
@@ -592,7 +558,16 @@ void* workerFun(){
 	return NULL;
 }
 
-
+/**
+ * \brief handler che si occupa della disconnessione di un client 
+ * 
+ * \param fd file descriptor client
+ * 
+ * \retval 0: successo
+ * \retval -1: read EOF
+ * \retval SERVER_ERROR: errore
+ * 
+ */
 int clientExit(int fd){
 
 	queue* fdPending = createQueue(free,NULL);
@@ -600,7 +575,7 @@ int clientExit(int fd){
 
 	die_on_se(remove_client(storage,fd,fdPending));
 
-	// notifico il client che erano in attesa di acquisire lock
+	// notifico il client che era in attesa di acquisire lock
 	while(fdPending->ndata){
 		chk_get_send(sendResponseCode((long)dequeue(fdPending),SUCCESS))
 	}
@@ -629,14 +604,21 @@ int clientExit(int fd){
 }
 
 
-
+/**
+ * \brief spawna un numero worker passato come parametro
+ * 
+ * \param n numero worker da spawnare
+ * 
+ * \retval puntatore ai tid spawnati: successo
+ * \retval NULL : errore
+ * 
+ */
 pthread_t* spawnWorker(int n){
 	pthread_t* tid = malloc(sizeof(pthread_t)*n);
 	ec(tid,NULL,"malloc",return NULL)
 
 	for(int i = 0; i < n; i++){
 		CREA_THREAD(&tid[i],NULL,workerFun,NULL)
-		// logPrint("SPAWN WORKER",NULL,tid[i],0,NULL);
 	}
 
 	return tid;
@@ -644,8 +626,18 @@ pthread_t* spawnWorker(int n){
 
 
 
-
-
+/**
+ * \brief legge pathname inviato da un client
+ * 
+ * \param fd file descriptor client
+ * 
+ * \param pathname indirizzo dove memorizzate pathname letto
+ * 
+ * \retval 0: successo
+ * \retval -1: read EOF
+ * \retval SERVER_ERROR: errore
+ * 
+ */
 int getPathname(int fd,char** pathname){
 	// leggo lunghezza pathname
 	char* _pathLen = calloc(PATHNAME_LEN+1,1);
@@ -692,7 +684,17 @@ int getPathname(int fd,char** pathname){
 }
 
 
-
+/**
+ * \brief manda al client il codice di risposta
+ * 
+ * \param fd file descriptor client
+ * 
+ * \param res codice risposta
+ * 
+ * \retval 0: successo
+ * \retval SERVER_ERROR: errore
+ * 
+ */
 int sendResponseCode(int fd,int res){
 	
 	char resBuf[RESPONSE_CODE_SIZE+1] = "";
@@ -711,7 +713,22 @@ int sendResponseCode(int fd,int res){
 
 
 
-// mando al client il file
+/**
+ * \brief manda al client il file 
+ * 
+ * \param fd file descriptor client
+ * 
+ * \param pathname path del file
+ * 
+ * \param size size del file
+ * 
+ * \param content contenuto del file
+ * 
+ * \retval 0: successo
+ * \retval -1: read EOF
+ * \retval SERVER_ERROR: errore
+ * 
+ */
 int sendFile(int fd,char* pathname, size_t size, void* content){
 
 	long resLen = RESPONSE_CODE_SIZE+1;
@@ -804,7 +821,6 @@ int getFlags(int fd, int *flags){
 }
 
 
-
 int getFile(int fd, size_t* size, void** content){
 
 	char* fileSize = calloc(MAX_FILESIZE_LEN+1,1);
@@ -856,3 +872,42 @@ int getFile(int fd, size_t* size, void** content){
 	
 }
 
+
+char* retToString(int ret){
+	char* toRet = NULL;
+	switch(ret){
+			case SUCCESS:
+				toRet =  "SUCCESS";
+			break;
+			case EMPTY_FILE:
+				toRet =  "EMPTY_FILE";
+			break;
+			case FILE_EXISTS:
+				toRet =  "FILE_EXISTS";
+			break;
+			case FILE_NOT_EXISTS:
+				toRet =  "FILE_NOT_EXISTS";
+			break;
+			case SERVER_ERROR:
+				toRet =  "SERVER_ERROR";
+			break;
+			case BAD_REQUEST:
+				toRet =  "BAD_REQUEST";
+			break;
+			case FILE_TOO_LARGE:
+				toRet =  "FILE_TOO_LARGE";
+			break;
+			case LOCKED:
+				toRet =  "LOCKED";
+			break;
+			case NOT_LOCKED:
+				toRet =  "NOT_LOCKED";
+			break;
+			case NOT_OPENED:
+				toRet =  "NOT_OPENED";
+			break;
+			default:;break;
+		}
+	
+	return toRet; 
+}

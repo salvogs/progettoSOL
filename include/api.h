@@ -55,6 +55,9 @@
 			case NOT_LOCKED:\
 				fprintf(stdout,"==%d== %s : %s : NESSUNA LOCK SUL FILE\n",getpid(),op,a);\
 			break;\
+			case STORE_FULL:\
+				fprintf(stdout,"==%d== %s : %s : STORE PIENO\n",getpid(),op,a);\
+			break;\
 			case NOT_OPENED:\
 				fprintf(stdout,"==%d== %s : %s : FILE NON APERTO\n",getpid(),op,a);\
 			break;\

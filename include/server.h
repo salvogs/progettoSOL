@@ -22,4 +22,7 @@ int getFlags(int fd, int *flags);
 
 int getFile(int fd, size_t* size, void** content);
 
+char* retToString(int ret);
+
+
 #endif

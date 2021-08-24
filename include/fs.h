@@ -46,11 +46,13 @@ typedef struct{
 	int activeWriters;
 
 
-	//pthread_mutex_t muxfd;
-	int fdlock;	
-	int fdwrite;
-	queue* fdopen;
-	queue* fdpending;
+	
+	int fdlock;	//O_LOCK = client che possiede la lock
+	int fdwrite; //client che può effettuare la write
+	queue* fdopen; //client che hanno il file aperto
+	queue* fdpending; //client in attesa di ottenere la lock
+
+	int modified; // flag che indica se il file è stato modificato dopo la prima write
 }fT;
 
 #define IS_O_CREATE_SET(flags) \
@@ -72,7 +74,7 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPe
 
 int close_file(fsT* storage, int fdClient, char* pathname);
 
-int write_append_file(fsT* storage,int fdClient,char* pathname, size_t size, void* content, queue* ejected, queue* fdPending);
+int write_append_file(fsT* storage, int mode, int fdClient,char* pathname, size_t size, void* content, queue* ejected, queue* fdPending);
 
 int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** content);
 

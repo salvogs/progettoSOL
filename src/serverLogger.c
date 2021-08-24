@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
 #include <time.h>
 #include "../include/utils.h"
@@ -80,7 +82,7 @@ int logPrint(char* event, char* pathname, int fdClient, size_t bytes, char* ret)
 		sprintf(buf+strlen(buf),"%s\t",ret);
 	}
 
-	if(bytes){
+	if(bytes != -1){
 		sprintf(buf+strlen(buf),"byte_processati:%ld\t",bytes);
 	}
 	

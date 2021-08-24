@@ -1,12 +1,12 @@
-// #include <stdio.h>
-// #include <errno.h>
-// #include <string.h>
-// #include <stdlib.h>
-// #include <unistd.h>
-// #include <sys/types.h>
-// #include <stdarg.h>
 #include "../include/utils.h"
 
+
+
+/**
+ * \retval 0: ok
+ * \retval 1: non e'un numero
+ * \retval 2: overflow/underflow
+ */ 
 int isNumber(const char* s, long* n){
     if(s==NULL)
         return 1;
@@ -27,7 +27,12 @@ int isNumber(const char* s, long* n){
 }
 
 
-
+/** Evita letture parziali
+ *
+ *   \retval -1: errore (errno settato)
+ *   \retval  0: se durante la lettura da fd leggo EOF
+ *   \retval size se termina con successo
+ */
 ssize_t readn(int fd, void *ptr, size_t n)
 {
     size_t nleft;
@@ -53,7 +58,12 @@ ssize_t readn(int fd, void *ptr, size_t n)
     return (n - nleft); /* return >= 0  (bytes read) */
 }
 
-
+/** Evita scritture parziali
+ *
+ *   \retval -1   errore (errno settato)
+ *   \retval  0   se durante la scrittura la write ritorna 0
+ *   \retval  1   se la scrittura termina con successo
+ */
 ssize_t writen(int fd, void *ptr, size_t n)
 {
     size_t nleft;

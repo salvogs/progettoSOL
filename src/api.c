@@ -90,7 +90,7 @@ int openFile(const char* pathname, int flags){
 	chk_null(req,-1)
 
 	snprintf(req,reqLen,"%d%4d%s%d",OPEN_FILE,(int)strlen(pathname),pathname,flags);
-	//printf("reqLen: %d\n req: %s\n",reqLen,req);
+	
 	
 
 	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
@@ -215,7 +215,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 	}
 	// appendToFile:1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)MAX_FILESIZE_LENByte(dimensione file)dimensione_fileByte(file vero e proprio)
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + MAX_FILESIZE_LEN + size + 1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + MAX_FILESIZE_LEN + size + 1; 
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)
