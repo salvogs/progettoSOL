@@ -18,7 +18,7 @@ SPID=$!
 
 for i in {1..10}
 do
-	bash -c './test/test3_runClient.sh' &
+	./test/test3_runClient.sh &
 done
 
 s=30
@@ -32,5 +32,6 @@ done
 
 kill -s SIGINT $SPID 
 wait $SPID
+
 killall -s SIGKILL test3_runClient.sh client 
 exit 0

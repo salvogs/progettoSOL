@@ -19,25 +19,30 @@ socket=socket.sk
 
 
 # src contiene esattamente 10 files; -W di bigFile.bin causa l'espulsione di api.c (capacita' nfile superata)
+echo -e "${LBLUE}==CLIENT 1==${NC}"
 ./bin/client -p -f $socket -w src -W testfile/bigFile.bin -D test/ejectedDir
-echo -e "${LBLUE}==CLIENT 1 DISCONNESSO==${NC}"
 
-# -W di bigFile1.bin causa l'espulsione di tutti i file (in ordine FIFO)
-./bin/client -p -f $socket -W testfile/bigFile1.bin -D test/ejectedDir 
-echo -e "${LBLUE}==CLIENT 2 DISCONNESSO==${NC}"
+# causa l'espulsione di tutti i file (in ordine FIFO)
+# non vengono inviati dato che espulsione dopo openFile
+echo -e "${LBLUE}==CLIENT 2==${NC}"
+./bin/client -p -f $socket -W testfile/bigFile1.bin,testfile/img.jpg
 
 
-# append di bigFile1.bin NON causa l'espulsione (non espello lo stesso file che devo appendere)
-./bin/client -p -f $socket -W testfile/bigFile1.bin
-echo -e "${LBLUE}==CLIENT 3 DISCONNESSO==${NC}"
+# modifico img.jpg (non causa espulsione)
+echo -e "${LBLUE}==CLIENT 3==${NC}"
+./bin/client -p -f $socket -W testfile/img.jpg
 
 
 # file troppo grande
+echo -e "${LBLUE}==CLIENT 4==${NC}"
 ./bin/client -p -f $socket -W testfile/verybigFile.bin
-echo -e "${LBLUE}==CLIENT 4 DISCONNESSO==${NC}"
+
+
+# scrivendo 1Mb.bin(che causa espulsione), ricevo img.jpg che è stato modificato
+echo -e "${LBLUE}==CLIENT 5==${NC}"
+./bin/client -p -f $socket -W testfile/1Mb.bin -D test/ejectedDir
 
 kill -s SIGHUP $SPID
-
 wait $SPID
 
 exit 0

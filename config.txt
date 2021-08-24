@@ -1,5 +1,5 @@
 # capacità massima in bytes del server
-MAXCAPACITY: 53000000000
+MAXCAPACITY: 10000000
 
 # numero di file massimo del server
 MAXFILENUM:1000
@@ -12,12 +12,3 @@ SOCKETPATH:socket.sk
 
 # path del log file
 LOGPATH:log.txt
-
-# maximum number of pending connections to the socket
-SOCKETBACKLOG:10
-
-# size of the master-worker task buffer
-TASKBUFSIZE:2048
-
-# size of the log buffer
-LOGBUFFERSIZE:2048

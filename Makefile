@@ -67,7 +67,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c $(HEADDIR)/%.h
 
 
 cleanall: clean
-	rm -f -r test/readDir test/ejectedDir lib/*.a obj/*.o 
+	rm -f -r test/readDir test/ejectedDir lib/*.a obj/*.o log.txt socket.sk
 
 clean:
 	rm -f bin/*

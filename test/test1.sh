@@ -19,12 +19,12 @@ socket=socket.sk
 reqTime=200
 
 
+echo -e "${LBLUE}==CLIENT 1==${NC}"
 ./bin/client -p -f $socket -t $reqTime -w src -w include,n=3 -r "$PWD/src/server.c","$PWD/src/client.c" -d test/readDir 
-echo -e "${LBLUE}==CLIENT 1 DISCONNESSO==${NC}"
 
 
+echo -e "${LBLUE}==CLIENT 2==${NC}"
 ./bin/client -p -f $socket -t $reqTime -W testfile/verybigFile.bin,testfile/img.jpg,testfile/smallFile.bin
-echo -e "${LBLUE}==CLIENT 2 DISCONNESSO==${NC}"
 
 
 
