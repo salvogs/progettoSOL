@@ -14,20 +14,11 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include "../include/comPrt.h"
-//#include "../include/client.h"
+
 #define UNIX_PATH_MAX 108
 
 
-// char* intToOp(int op){
-// 	switch(op){
-// 		case OPEN_FILE: return "OPEN FILE"; break;
-// 		case CLOSE_FILE: return "CLOSE FILE"; break;
-// 		case WRITE_FILE: return "WRITE FILE"; break;
-// 	}
-// }
-
-// a = arg r = retvalue  
-// nel caso di RECIVED_FILE op funge da bytes del file
+// a = arg a = path r = retvalue  
 #define PRINTER(op,a,r)  \
 	if(PRINTS){\
 		switch(r){\

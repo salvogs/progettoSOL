@@ -19,6 +19,7 @@ int mfn = 0;
 int wn = 0;
 int sp = 0;
 int lp = 0;
+int ep = 0;
 
 void remplaceNewline(char* s, int len){
 	for(int i = 0; i < len; i++){
@@ -57,6 +58,12 @@ int checkParsing(parseT* config){
 		perror("LOGPATH");
 	}
 
+	if(!ep){
+		errno = EINVAL;
+		perror("EVICTIONPOLICY");
+	}
+
+
 	if(errno){
 		destroyConfiguration(config);
 		return 1;
@@ -87,6 +94,7 @@ parseT* parseConfig(char* configPath,char* delim){
 	config->maxCapacity = 0;
 	config->maxFileNum = 0;
 	config->workerNum = 0;
+	config->evictionPolicy = 0;
 	config->sockname = NULL;
 	config->logPath = NULL;
 
@@ -119,6 +127,13 @@ parseT* parseConfig(char* configPath,char* delim){
 		}else if(strncmp(token,"LOGPATH",strlen(token)) == 0){
 			GET_STRING_PARAMETER(config->logPath,".txt",LOGPATH_ERR)
 			lp++;
+		}else if(strncmp(token,"EVICTIONPOLICY",strlen(token)) == 0){
+			GET_INTEGER_PARAMETER(config->evictionPolicy,0,EVICTIONPOLICY_ERR)
+			if(config->evictionPolicy != 0 && config->evictionPolicy != 1 && config->evictionPolicy != 2){
+				fprintf(stderr,EVICTIONPOLICY_ERR);
+				return NULL;
+			}
+			ep++;
 		}
 
 

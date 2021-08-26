@@ -1,6 +1,8 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+
+char *realpath(const char *path, char *resolved_path);
 int isRegularFile(char* pathname);
 int isDirectory(char* pathname);
 int isPointDir(char *dir);

@@ -8,6 +8,10 @@
 #include "../include/serverLogger.h"
 //struct che mantiene lo stato del file storage server
 
+#define FIFO 0
+#define LRU 1
+#define LFU 2
+
 typedef struct{
 	
 	icl_hash_t* ht;
@@ -28,6 +32,8 @@ typedef struct{
 	int ejectedFileNum; // numero di file effettivamente espulsi
 	int tryEjectFile; // numero volte che e' partito l'algoritmo di rimpiazzamento
 
+
+	int evictionPolicy;
 
 }fsT;
 
@@ -52,7 +58,10 @@ typedef struct{
 	queue* fdopen; //client che hanno il file aperto
 	queue* fdpending; //client in attesa di ottenere la lock
 
-	int modified; // flag che indica se il file è stato modificato dopo la prima write
+	int modified; // DIRTY BIT che indica se il file è stato modificato dopo la prima write
+ 
+	time_t accessTime; // per LRU
+	int accessCount; // per LFU
 }fT;
 
 #define IS_O_CREATE_SET(flags) \
@@ -66,7 +75,7 @@ typedef struct{
 #define CAST_FD(fd) (void*)(long)fd
 
 
-fsT* create_fileStorage(size_t maxCapacity, int maxFileNum);
+fsT* create_fileStorage(size_t maxCapacity, int maxFileNum, int evictionPolicy);
 
 int destroy_fileStorage(fsT* storage);
 
@@ -103,5 +112,8 @@ fT* fileCopy(fT* fPtr);
 int store_remove(fsT* storage, fT* fPtr, int freeFile);
 
 int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdPending);
+
+void update_access_info(fT* fPtr, int ep);
+
 
 #endif

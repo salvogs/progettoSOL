@@ -10,7 +10,7 @@
 
 
 
-fsT* create_fileStorage(size_t maxCapacity, int maxFileNum){
+fsT* create_fileStorage(size_t maxCapacity, int maxFileNum, int evictionPolicy){
 	
 	fsT* storage = malloc(sizeof(fsT));
 	chk_null(storage,NULL)
@@ -30,7 +30,7 @@ fsT* create_fileStorage(size_t maxCapacity, int maxFileNum){
 	storage->maxFileNumStored = 0;
 	storage->ejectedFileNum = 0;
 	storage->tryEjectFile = 0;
-
+	storage->evictionPolicy = evictionPolicy;
 	ec(storage->filesQueue = createQueue(NULL,cmpFile),NULL,"create queue",return NULL)
 
 	ec_n(pthread_mutex_init(&(storage->smux),NULL),0,"pthread mutex init storage",return NULL)
@@ -93,9 +93,13 @@ int open_file(fsT* storage, int fdClient, char* pathname, int flags, queue* fdPe
     
 		fPtr->activeWriters++;
 
+		if(storage->evictionPolicy != FIFO)
+			update_access_info(fPtr,storage->evictionPolicy);
+
 		UNLOCK(&(fPtr->ordering))
 		UNLOCK(&(fPtr->mux))
 		
+
 
 		if(lock){
 			if(fPtr->fdlock && fPtr->fdlock != fdClient)
@@ -177,6 +181,8 @@ int close_file(fsT* storage, int fdClient, char* pathname){
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
 	
+	if(storage->evictionPolicy != FIFO)
+		update_access_info(fPtr,storage->evictionPolicy);
 
 	int ret = SUCCESS;
 	// se il client ha aperto il file rimuovo il suo fd
@@ -248,7 +254,7 @@ int write_append_file(fsT* storage, int mode, int fdClient,char* pathname, size_
 
 
 	 
-
+	// libero spazio per memorizzare file
 	while(size + storage->currCapacity > storage->maxCapacity){
 		
 		fT* ef = eject_file(storage,fPtr->pathname,fdClient,1);
@@ -284,8 +290,12 @@ int write_append_file(fsT* storage, int mode, int fdClient,char* pathname, size_
 
 	fPtr->activeWriters++; // 1
 
+	if(storage->evictionPolicy != FIFO)
+		update_access_info(fPtr,storage->evictionPolicy);
+
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
+
 
 	int ret = SUCCESS;
 
@@ -394,6 +404,9 @@ int read_file(fsT* storage,int fdClient, char* pathname, size_t* size, void** co
 	fPtr->activeReaders++;
 
 	
+	if(storage->evictionPolicy != FIFO)
+		update_access_info(fPtr,storage->evictionPolicy);
+
 	// permetto ad altri lettori/scrittori di avanzare 
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
@@ -474,6 +487,8 @@ int read_n_file(fsT* storage,int n,int fdClient, queue* ejected){
 		
 		fPtr = (fT*)(curr->data);
 
+		if(storage->evictionPolicy != FIFO)
+			update_access_info(fPtr,storage->evictionPolicy);
 		
 		// faccio copia del file e lo inserisco in coda ai file da espellere (inviare)
 		if(!(ef = fileCopy(fPtr)) || enqueue(ejected,ef) != 0){
@@ -533,7 +548,7 @@ int remove_file(fsT* storage, int fdClient, char* pathname, queue* fdPending){
 	while(fPtr->activeReaders || fPtr->activeWriters)
         WAIT(&(fPtr->go),&(fPtr->mux));
     
-	//fPtr->activeWriters++;
+	
 
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
@@ -602,6 +617,9 @@ int lock_file(fsT* storage, int fdClient, char* pathname){
         WAIT(&(fPtr->go),&(fPtr->mux));
     
 	fPtr->activeWriters++;
+
+	if(storage->evictionPolicy != FIFO)
+		update_access_info(fPtr,storage->evictionPolicy);
 
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
@@ -673,6 +691,10 @@ int unlock_file(fsT* storage, int fdClient, char* pathname, int *newFdLock){
         WAIT(&(fPtr->go),&(fPtr->mux));
     
 	fPtr->activeWriters++;
+
+	if(storage->evictionPolicy != FIFO)
+		update_access_info(fPtr,storage->evictionPolicy);
+
 
 	UNLOCK(&(fPtr->ordering))
 	UNLOCK(&(fPtr->mux))
@@ -766,6 +788,14 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 	fPtr->size = 0;
 	fPtr->content = NULL;
 	fPtr->modified = 0;
+	
+	fPtr->accessCount = 0;
+
+	struct timespec ret;
+	ec(clock_gettime(CLOCK_MONOTONIC,&ret),-1,"clock_gettime",exit(EXIT_FAILURE));
+	fPtr->accessTime = ret.tv_nsec;
+
+
 	fPtr->fdlock = fdClient;
 	fPtr->fdwrite = fdClient;
 
@@ -799,11 +829,6 @@ int store_insert(fsT* storage, int fdClient, char* pathname,int lock, queue* fdP
 
 	return 0;
 }
-
-
-
-
-
 
 
 /**
@@ -1015,9 +1040,9 @@ fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 		return NULL;
 
 	data* curr = fq->head;
+	fT* tmp = NULL, *toEject = NULL; 
 	
-	fT* tmp = NULL; 
-
+	// scorro la lista dei file
 	while(curr){
 		tmp = curr->data;
 		// skippo i file vuoti/lockati e il file che voglio scrivere
@@ -1035,31 +1060,65 @@ fT* eject_file(fsT* storage, char* pathname, int fdClient, int chkEmpty){
 		// chkEmpty == 1 ritorno il file solo se non e' vuoto
 
 		if((tmp->fdlock == fdClient || !(tmp->fdlock)) && (pathname ? (strcmp(tmp->pathname,pathname) != 0) : 1) && (chkEmpty ? tmp->size : 1)){
-			storage->ejectedFileNum++;
-			logPrint("ESPULSO",tmp->pathname,0,tmp->size,NULL);
-			return tmp;
-		}		
+			
+			if(storage->evictionPolicy == LRU){
+				if(!toEject)
+					toEject = tmp;
+				else if(tmp->accessTime < toEject->accessTime)
+					toEject = tmp;
+				
+			}else if(storage->evictionPolicy == LFU){
+				if(!toEject)
+					toEject = tmp;
+				if(tmp->accessCount < toEject->accessCount)
+					toEject = tmp;
+				
+			}else{// FIFO
+				storage->ejectedFileNum++;
+				logPrint("ESPULSO",tmp->pathname,0,tmp->size,NULL);
+				return tmp;
+			}
+			
+		}
 		curr = curr->next;
 	}
-
 	
-	return NULL; // attualmente non ho file da espellere
+	if(storage->evictionPolicy == FIFO)
+		return NULL; // non ci sono attualmente file da espellere
+
+	if(toEject){
+		storage->ejectedFileNum++;
+		logPrint("ESPULSO",toEject->pathname,0,toEject->size,NULL);
+		return toEject;
+	}
+	return NULL;
 
 		
 }
 
+void update_access_info(fT* fPtr, int ep){
+	if(ep == LRU){
+		struct timespec ret;
+		ec(clock_gettime(CLOCK_MONOTONIC,&ret),-1,"clock_gettime",exit(EXIT_FAILURE));
+		fPtr->accessTime = ret.tv_nsec;
+	}
+	else // LFU
+		fPtr->accessCount++;
+
+	return;
+}
 
 void print_final_info(fsT* storage,int maxClientNum){
 
-	fprintf(stdout,"\033[0;32m---STATISTICHE FINALI---\n\033[0m");
+	fprintf(stdout,"\033[0;32m---STATISTICHE FINALI---\033[0m\n");
 	
-	fprintf(stdout,"Max file memorizzati: %d\n",storage->maxFileNumStored);
+	fprintf(stdout,"\033[0;34mMax file memorizzati:\033[0m %d\n",storage->maxFileNumStored);
 
-	fprintf(stdout,"Max Mbyte memorizzati: %f\n",(float)(storage->maxCapacityStored)/1000000);
-	fprintf(stdout,"Esecuzioni dell'algoritmo di rimpiazzamento: %d\n",storage->tryEjectFile);
-	fprintf(stdout,"File espulsi: %d\n",storage->ejectedFileNum);
+	fprintf(stdout,"\033[0;34mMax Mbyte memorizzati:\033[0m %f\n",(float)(storage->maxCapacityStored)/1000000);
+	fprintf(stdout,"\033[0;34mEsecuzioni dell'algoritmo di rimpiazzamento:\033[0m %d\n",storage->tryEjectFile);
+	fprintf(stdout,"\033[0;34mFile espulsi:\033[0m %d\n",storage->ejectedFileNum);
 
-	fprintf(stdout,"File presenti alla chiusura: %d\n",storage->currFileNum);
+	fprintf(stdout,"\033[0;34mFile presenti alla chiusura:\033[0m %d\n",storage->currFileNum);
 
 	char buf[LOGEVENTSIZE] = "";
 	snprintf(buf,LOGEVENTSIZE,"==STATS==MAXNFILE %d MAXMBYTE %f MAXCLIENT %d",storage->maxFileNumStored,(float)(storage->maxCapacityStored)/1000000,maxClientNum);
@@ -1069,7 +1128,7 @@ void print_final_info(fsT* storage,int maxClientNum){
 	data* curr = storage->filesQueue->head;
 
 	while(curr){
-		fprintf(stdout,"%s\n",((fT*)(curr->data))->pathname);
+		fprintf(stdout,"\033[0;31m%s\033[0m\n",((fT*)(curr->data))->pathname);
 		curr = curr->next;
 	}
 

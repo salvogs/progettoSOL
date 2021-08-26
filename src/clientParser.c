@@ -1,5 +1,3 @@
-//#define _POSIX_C_SOURCE 200809L
-// #define _GNU_SOURCE
 #include <stdio.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -48,7 +46,7 @@ parseT* parser(int argc, char* argv[]){
 	}
 	
 
-	//int p_flag = 0,f_flag = 0;
+	
 
 	parseT* parseResult = malloc(sizeof(parseT));
 	ec(parseResult,NULL,"malloc",return NULL)
@@ -77,7 +75,7 @@ parseT* parser(int argc, char* argv[]){
 			case 'R':
 				if(optind < argc && argv[optind][0] != '-')
 					optarg = argv[optind];
-					//ret = enqueueArg(argQueue,opt,optarg);
+					
 				if(!optarg){
 					optarg = "n=0";
 				}
@@ -106,7 +104,7 @@ parseT* parser(int argc, char* argv[]){
 				if(!(parseResult->REQ_TIME)){
 					if(optind < argc && argv[optind][0] != '-')
 						optarg = argv[optind];
-					//ret = enqueueArg(argQueue,opt,optarg);
+					
 					if(optarg){
 						if(isNumber(optarg,&parseResult->REQ_TIME) != 0){ // no numero/overflow
 							fprintf(stderr,"-t deve essere seguito da un intero\n");

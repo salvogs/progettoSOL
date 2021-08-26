@@ -12,3 +12,7 @@ SOCKETPATH:socket.sk
 
 # path del log file
 LOGPATH:log.txt
+
+# politica espulsione file cache
+#FIFO:0 LRU:1 LFU:2
+EVICTIONPOLICY:1

@@ -18,14 +18,18 @@ sleep 2s
 socket=socket.sk
 
 
-# src contiene esattamente 10 files; -W di bigFile.bin causa l'espulsione di api.c (capacita' nfile superata)
+# src contiene esattamente 10 files;
+# -W src/api.c,src/clientParser.c modificano ultimo accesso file per LRU/LFU;
+# -W di bigFile.bin causa l'espulsione di api.c (capacita' nfile superata) se evictionPolicy = 0(FIFO)
+# 	altrimenti, se LRU(1)/LFU(2), verrà espulso client.c
 echo -e "${LBLUE}==CLIENT 1==${NC}"
-./bin/client -p -f $socket -w src -W testfile/bigFile.bin -D test/ejectedDir
+./bin/client -p -f $socket -w src -W src/api.c,src/clientParser.c,testfile/bigFile.bin -D test/ejectedDir
 
-# causa l'espulsione di tutti i file (in ordine FIFO)
-# non vengono inviati dato che espulsione dopo openFile
+
+# causa l'espulsione di tutti i file 
+# vengono inviati solo i file modificati 
 echo -e "${LBLUE}==CLIENT 2==${NC}"
-./bin/client -p -f $socket -W testfile/bigFile1.bin,testfile/img.jpg
+./bin/client -p -f $socket -W testfile/bigFile1.bin,testfile/img.jpg -D test/ejectedDir
 
 
 # modifico img.jpg (non causa espulsione)

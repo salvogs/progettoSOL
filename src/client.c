@@ -13,8 +13,7 @@
 #include "../include/api.h"
 #include "../include/utils.h"
 
-//#include <string.h> //
-char *realpath(const char *path, char *resolved_path);
+
 
 #define OC_RETRY_TIME 1000 //ms
 #define OC_ABS_TIME 10 //s

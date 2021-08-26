@@ -116,7 +116,7 @@ int closeFile(const char* pathname){
 
 
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; 
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)
@@ -385,7 +385,7 @@ int readNFiles(int N, const char* dirname){
 int lockFile(const char* pathname){
 	// lockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1;
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)
@@ -411,7 +411,7 @@ int lockFile(const char* pathname){
 int unlockFile(const char* pathname){
 	// unlockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1;
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)

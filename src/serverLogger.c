@@ -30,7 +30,7 @@ int logCreate(char* logPath){
 	return 0;
 }
 
-
+// funzione eseguita dal thread logger che riporta le scritture dal buffer al disco
 void* loggerFun(void* args){	
 
 	while(1){
@@ -52,8 +52,23 @@ void* loggerFun(void* args){
 	}
 }
 
-
+/**
+ * \brief funzione che permette di scrivere nel log buffer
+ * 
+ * \param event evento che si vuole riportare sul log
+ * 
+ * \param pathname path dell'operazione (facoltativo)
+ * 
+ * \param fdClient client legato all'operazione (facoltativo)
+ * 
+ * \param bytes bytes legati all'operazione (facoltativo)
+ *  
+ * \param ret esito operazione (facoltativo)
+ */
 int logPrint(char* event, char* pathname, int fdClient, size_t bytes, char* ret){
+
+	if(!event) return -1;
+
 	time_t t = time(NULL);
 	
 	char buf[LOGEVENTSIZE] = "";

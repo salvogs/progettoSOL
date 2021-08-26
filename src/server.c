@@ -23,8 +23,6 @@
 #define DELIM_CONFIG_FILE ":"
 
 
-pthread_mutex_t request_mux = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 
 
@@ -34,6 +32,9 @@ queue* requestQueue;
 // pipe che servirà ai thread worker per comunicare al master i fd_client da riascoltare
 int pfd[2];
 
+// mutex e variabile condizione per l'accesso a requestQueue
+pthread_mutex_t request_mux = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 char* sockname;
 int workerNum;
@@ -89,9 +90,10 @@ int main(int argc, char* argv[]){
 	//maschero tutti i segnali finchè i gestori permanenti non sono installati
 	ec(sigfillset(&set),-1,"sigfillset",return 1)
 	ec(pthread_sigmask(SIG_SETMASK,&set,NULL),-1,"pthread_sigmask",return 1)
-	memset(&sact,0,sizeof(sact));
 
+	memset(&sact,0,sizeof(sact));
 	sact.sa_handler = signalHandler;
+
 	ec(sigaction(SIGINT,&sact,NULL),-1,"sigaction",return 1)
 	ec(sigaction(SIGQUIT,&sact,NULL),-1,"sigaction",return 1)
 	ec(sigaction(SIGHUP,&sact,NULL),-1,"sigaction",return 1)
@@ -113,13 +115,13 @@ int main(int argc, char* argv[]){
 	logPath = config->logPath;
 	workerNum = config->workerNum;
 
-	if((storage = create_fileStorage(config->maxCapacity,config->maxFileNum)) == NULL)
+	if((storage = create_fileStorage(config->maxCapacity,config->maxFileNum,config->evictionPolicy)) == NULL)
 		return 1;
 	
 
 	printf("\033[0;32mMAXCAPACITY:\033[0m %ld, \033[0;32mMAXFILENUM:\033[0m %d, "
-		 "\033[0;32mWORKERNUM:\033[0m %d, \033[0;32mSOCKNAME:\033[0m %s, \033[0;32mLOGPATH:\033[0m %s\n"\
-		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath);
+		 "\033[0;32mWORKERNUM:\033[0m %d\n\033[0;32mSOCKNAME:\033[0m %s, \033[0;32mLOGPATH:\033[0m %s, \033[0;32mEVICTIONPOLICY:\033[0m %d\n"\
+		 ,storage->maxCapacity,storage->maxFileNum,workerNum,sockname,logPath,config->evictionPolicy);
 
 	
 	ec(requestQueue = createQueue(NULL,NULL),NULL,"requestQueue create",return EXIT_FAILURE);

@@ -11,14 +11,14 @@
 
 #define LOGPATH_ERR "LOGPATH: deve essere un path terminato con .txt\n"
 
+#define EVICTIONPOLICY_ERR "EVICTIONPOLICY: deve essere 0, 1 o 2\n"
 
 #include "../include/fs.h"
 /*
-	converte, se il campo 'p' non e' gia' stato settato,
+	converte, se il campo 'p' non e' gia' stato settato
 	il parametro di configurazione in intero e controlla 
 	che sia < di 'v'
 */
-
 #define GET_INTEGER_PARAMETER(p,v,err_m) \
 	if(p == 0){\
 		token = strtok_r(NULL,delim,&save);\
@@ -62,7 +62,7 @@
 		strncpy(p,token,strlen(token)+1);\
 	}
 
-		
+// struct restituita dal parser
 typedef struct{
 	size_t maxCapacity;
 	size_t currCapacity;
@@ -72,6 +72,8 @@ typedef struct{
 	int workerNum;
 	char* sockname;
 	char* logPath; 
+
+	int evictionPolicy;
 }parseT;
 
 
