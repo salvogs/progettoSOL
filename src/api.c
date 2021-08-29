@@ -23,6 +23,11 @@ char *realpath(const char *path, char *resolved_path);
 
 int openConnection(const char* sockname, int msec, const struct timespec abstime){
 		
+	if(!sockname){
+		errno = EINVAL;
+		return -1;
+	}
+
 	//creazione client socket
 	ec(FD_CLIENT=socket(AF_UNIX,SOCK_STREAM,0),-1,"client socket",return -1);
 
@@ -51,7 +56,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 			return -1;
 		}
 		
-		nanosleep(&tsleep,NULL);
+		chk_neg1(nanosleep(&tsleep,NULL), -1)
 	}
 
 	
@@ -80,9 +85,14 @@ int closeConnection(const char* sockname){
 
 int openFile(const char* pathname, int flags){
 
+
+	if(!pathname || flags < 0 || flags > 3){
+		errno = EINVAL;
+		return -1;
+	}
+
+
 	// openFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)1Byte(flags)
-
-
 
 	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname) + sizeof(char) +1; //+1 finale percheè snprintf include anche il \0
 
@@ -112,9 +122,13 @@ int openFile(const char* pathname, int flags){
 
 int closeFile(const char* pathname){
 
+	if(!pathname){
+		errno = EINVAL;
+		return -1;
+	}
+
+
 	// closeFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
-
-
 
 	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; 
 
@@ -146,6 +160,12 @@ int closeFile(const char* pathname){
 
 int writeFile(const char* pathname, const char* dirname){
 	 
+	if(!pathname){
+		errno = EINVAL;
+		return -1;
+	}
+
+
 	size_t fsize =0;
 	void* content = NULL;
 
@@ -203,6 +223,10 @@ int writeFile(const char* pathname, const char* dirname){
 
 int appendToFile(const char* pathname, void* buf, size_t size, const char* dirname){
 	
+	if(!pathname ){
+		errno = EINVAL;
+		return -1;
+	}
 
 	if(size == 0){
 		//non faccio nemmeno richiesta al server
@@ -254,6 +278,12 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 }
 
 int removeFile(const char* pathname){
+	
+	if(!pathname){
+		errno = EINVAL;
+		return -1;
+	}
+
 	// removeFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
@@ -283,6 +313,12 @@ int removeFile(const char* pathname){
 
 
 int readFile(const char* pathname, void** buf, size_t* size){
+	
+	if(!pathname){
+		errno = EINVAL;
+		return -1;
+	}
+	
 	// readFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
@@ -331,6 +367,11 @@ int readFile(const char* pathname, void** buf, size_t* size){
 
 
 int readNFiles(int N, const char* dirname){
+
+	if(!dirname){
+		errno = EINVAL;
+		return -1;
+	}
 
 	// readNFile:	1Byte(operazione)4Byte(N file da leggere)
 
@@ -383,6 +424,12 @@ int readNFiles(int N, const char* dirname){
 
 
 int lockFile(const char* pathname){
+
+	if(!pathname){
+		errno = EINVAL;
+		return -1;
+	}
+
 	// lockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1;
@@ -409,6 +456,12 @@ int lockFile(const char* pathname){
 }
 
 int unlockFile(const char* pathname){
+
+	if(!pathname){
+		errno = EINVAL;
+		return -1;
+	}
+
 	// unlockFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
 	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1;
