@@ -4,12 +4,6 @@
 #include "../include/queue.h"
 
 
-#define UNIX_PATH_MAX 108 //lunghezza massima indirizzo
-
-#define P_w \
-	if(p_flag == 1) \
-		fprintf("scrivooo");
-
 typedef struct{
 	char opt;
 	char* arg;
@@ -22,7 +16,6 @@ typedef struct{
 	char* SOCKNAME;
 	
 }parseT;
-
 
 
 

@@ -18,6 +18,7 @@ int sendResponseCode(int fd,int res);
 int sendFile(int fd,char* pathname, size_t size, void* content);
 
 int getN(int fd, int* n);
+
 int getFlags(int fd, int *flags);
 
 int getFile(int fd, size_t* size, void** content);

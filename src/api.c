@@ -286,13 +286,13 @@ int removeFile(const char* pathname){
 
 	// removeFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1;
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)
 
 	snprintf(req,reqLen,"%d%4d%s",REMOVE_FILE,(int)strlen(pathname),pathname);
-	//printf("reqLen: %d\n req: %s\n",reqLen,req);
+	
 	
 	chk_neg1(sendRequest(FD_CLIENT,req,reqLen-1),-1)
 	
@@ -321,7 +321,7 @@ int readFile(const char* pathname, void** buf, size_t* size){
 	
 	// readFile: 	1Byte(operazione)4Byte(lunghezza pathname)lunghezza_pathnameByte(pathname)
 
-	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1; //+1 finale percheè snprintf include anche il \0
+	int reqLen = sizeof(char) + sizeof(int) + strlen(pathname)+1;
 
 	char* req = calloc(reqLen,1);
 	chk_null(req,-1)
@@ -490,7 +490,6 @@ int unlockFile(const char* pathname){
 
 int sendRequest(int fd, void* req, int len){
 	if(writen(FD_CLIENT,req,len) == -1){
-		//perror("writen");
 		free(req);
 		return -1;
 	}

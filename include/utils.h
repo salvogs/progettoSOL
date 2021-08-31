@@ -108,7 +108,6 @@ char *strndup(const char *s, size_t n);
 
 int isNumber(const char* s, long* n);
 
-
 ssize_t readn(int fd, void *ptr, size_t n);
 
 ssize_t writen(int fd, void *ptr, size_t n);

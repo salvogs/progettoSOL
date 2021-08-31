@@ -583,7 +583,7 @@ int clientExit(int fd){
 	}
 
 
-	//fprintf(stdout,"client %d disconnesso\n",fd);
+	
 	logPrint("CLIENT DISCONNESSO",NULL,fd,-1,NULL);
 	LOCK(&(clientMux))
 	clientNum--;

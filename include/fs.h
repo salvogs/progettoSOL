@@ -6,12 +6,12 @@
 #include "../include/icl_hash.h"
 #include "../include/queue.h"
 #include "../include/serverLogger.h"
-//struct che mantiene lo stato del file storage server
 
 #define FIFO 0
 #define LRU 1
 #define LFU 2
 
+//struct che mantiene lo stato del file storage server
 typedef struct{
 	
 	icl_hash_t* ht;

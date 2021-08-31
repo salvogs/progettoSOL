@@ -91,7 +91,7 @@ parseT* parser(int argc, char* argv[]){
 				if(!(parseResult->SOCKNAME)){
 					if(optind < argc && argv[optind][0] != '-')
 						optarg = argv[optind];
-					//ret = enqueueArg(argQueue,opt,optarg);
+					
 					if(optarg){
 						int snameLen = strlen(optarg)+1; 
 						ec(parseResult->SOCKNAME = (char*)malloc(snameLen),NULL,"malloc",return NULL);
@@ -129,7 +129,6 @@ parseT* parser(int argc, char* argv[]){
 				return NULL;
     		break;
 			default:
-				//if(optarg[0] != '-')
 				ret = enqueueArg(argQueue,opt,optarg);
 			break;
 		}

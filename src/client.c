@@ -326,10 +326,9 @@ int recursiveVisit(char* pathname,long* n,int limited,char* dirname){
 
         if(isPointDir(file->d_name) == 0){ //non è una point-dir
             if(file->d_type == DT_DIR){
-                //if(n != 0)
-				chk_neg1(recursiveVisit(absoluteName,n,limited,dirname),-1) //chiamata ricorsiva
-						
 
+				chk_neg1(recursiveVisit(absoluteName,n,limited,dirname),-1) //chiamata ricorsiva
+					
 			}else if(file->d_type == DT_REG){
                 if(openFile(absoluteName,O_CREATE | O_LOCK) == 0){ //file creato sul server
 					//adesso bisogna inviare al server il contenuto del file
@@ -463,7 +462,7 @@ int removeHandler(char* args,struct timespec* reqTime){
 
 	char* save;
 	char* path;
-	//char* pathname;
+	
 
 	path = strtok_r(args,",",&save);
 

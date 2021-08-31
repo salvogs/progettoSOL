@@ -86,6 +86,7 @@ void* dequeue(queue* q){
 	return elem;
 	
 }
+
 /* pop dalla testa della coda senza ritornare il dato
 
 return: 1 no elementi in coda

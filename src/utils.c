@@ -184,7 +184,7 @@ int writeFileOnDisk(const char* dirname,const char* path, void* buf, size_t size
 
 	FILE* fPtr = fopen(newPath,"w+");
 	free(newPath);
-    if(errno != EEXIST)
+    if(errno && errno != EEXIST)
         return -1;
 
     errno = 0;

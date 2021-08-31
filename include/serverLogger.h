@@ -2,12 +2,6 @@
 #define SERVER_LOGGER_H
 
 
-// typedef struct{
-// 	char* path;
-// 	char* buffer;
-// 	size_t* bufSize;
-// }loggerT;
-
 // 8kb
 #define LOGBUFFERSIZE 8192  
 #define LOGEVENTSIZE 512
