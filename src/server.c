@@ -68,7 +68,8 @@ void signalHandler(int signum){
 	}
 	int warnSig = -1;
 	// nel caso in cui arrivi un segnale tra while e select 
-	write(pfd[1],&warnSig,sizeof(int));
+	if(write(pfd[1],&warnSig,sizeof(int)) == -1)
+		_exit(EXIT_FAILURE);
 
 	return;
 }
@@ -234,25 +235,25 @@ int masterFun(){
 				return 1;
 			}
 			// errno == EINTR (arrivato segnale)
-			
-			// SIGHUP (non accetto piu'nuove connessioni)
-			if(noMoreClient){
-				FD_CLR(fd_skt,&set);
-
-				//se era il max fd allora decremento il max
-				if(fd_skt == fd_num)
-					fd_num--;
-				close(fd_skt);
-
-				LOCK(&(clientMux))
-				if(clientNum == 0){
-					UNLOCK(&(clientMux))
-					break;
-				}
-				UNLOCK(&(clientMux))
-			}
 			continue;
 		}
+		// SIGHUP (non accetto piu'nuove connessioni)
+		if(noMoreClient){
+			FD_CLR(fd_skt,&set);
+
+			//se era il max fd allora decremento il max
+			if(fd_skt == fd_num)
+				fd_num--;
+			close(fd_skt);
+
+			LOCK(&(clientMux))
+			if(clientNum == 0){
+				UNLOCK(&(clientMux))
+				break;
+			}
+			UNLOCK(&(clientMux))
+		}
+		
 		//guardo tutti i fd della maschera di bit read_set
 		for(fd = 0; fd <=fd_num; fd++){
 			if(FD_ISSET(fd,&read_set)){
@@ -771,7 +772,6 @@ int sendFile(int fd,char* pathname, size_t size, void* content){
 	if(writen(fd,res,resLen-1) == -1){
 		if(errno && errno != EPIPE && errno != ECONNRESET && errno == EBADF){
 			perror("send file writen");
-			printf("errno %d\n",errno);
 			free(res);
 			return SERVER_ERROR;
 		}

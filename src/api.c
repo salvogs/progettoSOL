@@ -368,11 +368,6 @@ int readFile(const char* pathname, void** buf, size_t* size){
 
 int readNFiles(int N, const char* dirname){
 
-	if(!dirname){
-		errno = EINVAL;
-		return -1;
-	}
-
 	// readNFile:	1Byte(operazione)4Byte(N file da leggere)
 
 	int reqLen = sizeof(char) + sizeof(int) +1; //+1 finale percheè snprintf include anche il \0
